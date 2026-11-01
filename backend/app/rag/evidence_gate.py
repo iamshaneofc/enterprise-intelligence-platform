@@ -282,50 +282,142 @@ class EvidenceSufficiencyGate:
         """
         Detect factual contradictions across primary evidence (e.g. conflicting numerical metrics
         or dates between separate documents that lack progression language).
+        Associates extracted numbers with semantic context and units to prevent false positives.
         """
         if len(primary_chunks) < 2:
             return ConflictDetail(has_conflict=False)
 
-        # Group numbers and dates by document title
-        doc_metrics: Dict[str, Set[str]] = {}
-        for chunk in primary_chunks:
-            title = chunk.document_title or "Doc"
-            text = chunk.chunk.content
-            numbers = set(_NUMBER_PATTERN.findall(text))
-            dates = set(_DATE_PATTERN.findall(text))
-            doc_metrics[title] = doc_metrics.get(title, set()).union(numbers).union(dates)
+        # 1. Check for transitional progression language indicating chronological evolution
+        progression_cues = [
+            "scaled", "increased", "decreased", "lowered", "migrated",
+            "updated to", "raised to", "changed to", "remediated to",
+            "previously", "upgraded to", "originally", "reduced to",
+            "subsequently", "adjusted to", "after the incident"
+        ]
+        all_text = " ".join(c.chunk.content.lower() for c in primary_chunks)
+        if any(cue in all_text for cue in progression_cues):
+            return ConflictDetail(has_conflict=False)
 
-        # Check for numeric contradictions between distinct documents
-        doc_names = list(doc_metrics.keys())
-        if len(doc_names) >= 2:
-            doc_a, doc_b = doc_names[0], doc_names[1]
-            diff_a = doc_metrics[doc_a] - doc_metrics[doc_b]
-            diff_b = doc_metrics[doc_b] - doc_metrics[doc_a]
+        query_lower = query.lower()
 
-            # If documents reference diametrically opposed numbers for key engineering parameters
-            # and no transitional phrase like "upgraded to", "migrated to", "previously" is present
-            progression_cues = ["scaled", "increased", "decreased", "lowered", "migrated", "updated to", "raised to"]
-            all_text = " ".join(c.chunk.content.lower() for c in primary_chunks)
-            has_progression = any(cue in all_text for cue in progression_cues)
+        # 2. Check Date Conflicts (only when query specifically asks for dates/timelines)
+        date_pattern = re.compile(r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b")
+        query_incidents = set(re.findall(r"\b(?:inc|incident|ticket|issue)[-_ ]*#?(\d+)\b", query_lower))
 
-            if not has_progression and diff_a and diff_b:
-                # Check if query asks for a specific conflicting parameter
-                query_lower = query.lower()
-                conflicting_metrics = []
-                for val in (diff_a | diff_b):
-                    if any(term in query_lower for term in ["how many", "timeout", "latency", "size", "limit", "port"]):
-                        conflicting_metrics.append(val)
-                
-                if len(conflicting_metrics) >= 2:
-                    return ConflictDetail(
-                        has_conflict=True,
-                        conflict_type="numerical",
-                        description=f"Documents '{doc_a}' and '{doc_b}' assert conflicting metrics without resolution metadata: {conflicting_metrics[:4]}",
-                        competing_claims=[
-                            {"document": doc_a, "values": list(diff_a)[:3]},
-                            {"document": doc_b, "values": list(diff_b)[:3]},
-                        ],
-                    )
+        if any(t in query_lower for t in ["date", "when"]):
+            doc_dates: Dict[str, Set[str]] = {}
+            for chunk in primary_chunks:
+                content_lower = chunk.chunk.content.lower()
+                # If query specifically targets an incident ID, skip chunks explicitly referencing a different incident
+                if query_incidents:
+                    chunk_incidents = set(re.findall(r"\b(?:inc|incident|ticket|issue)[-_ ]*#?(\d+)\b", content_lower))
+                    if chunk_incidents and not (chunk_incidents & query_incidents):
+                        continue
+
+                title = chunk.document_title or "Doc"
+                dates = set(date_pattern.findall(chunk.chunk.content))
+                if dates:
+                    doc_dates[title] = doc_dates.get(title, set()).union(dates)
+
+            doc_names = list(doc_dates.keys())
+            for i in range(len(doc_names)):
+                for j in range(i + 1, len(doc_names)):
+                    doc_a, doc_b = doc_names[i], doc_names[j]
+                    dates_a = doc_dates[doc_a]
+                    dates_b = doc_dates[doc_b]
+                    if dates_a != dates_b and not (dates_a & dates_b):
+                        return ConflictDetail(
+                            has_conflict=True,
+                            conflict_type="date",
+                            description=f"Documents '{doc_a}' and '{doc_b}' assert conflicting dates: {sorted(list(dates_a))} vs {sorted(list(dates_b))}",
+                            competing_claims=[
+                                {"document": doc_a, "values": sorted(list(dates_a))[:3]},
+                                {"document": doc_b, "values": sorted(list(dates_b))[:3]},
+                            ],
+                        )
+
+        # 3. Semantic Metric Extraction Rules
+        # Distinguish between actual metrics, incident IDs (INC-104), status codes (504), and timestamps
+        metric_definitions = [
+            {
+                "name": "connections",
+                "patterns": [
+                    re.compile(r"(?:exhausted\s+(?:all\s*)?)(\d+)\s+connections?", re.IGNORECASE),
+                    re.compile(r"(?:max[_-]?connections?|connection[ -]?pool(?:\s+limit)?|pool[ -]?size)[^\d\n\.,;]{0,40}?(\d+)", re.IGNORECASE),
+                    re.compile(r"(\d+)\s+connections\b", re.IGNORECASE),
+                ],
+                "triggers": ["connection", "connections", "pool", "max_connections", "exhausted", "how many"],
+            },
+            {
+                "name": "timeout",
+                "patterns": [
+                    re.compile(r"(?:timeout|latency|delay|threshold)[^\d\n\.,;]{0,40}?(\d+(?:\.\d+)?)\s*(ms|s|sec|seconds?|minutes?)", re.IGNORECASE),
+                    re.compile(r"(\d+(?:\.\d+)?)\s*(ms|s|sec|seconds?|minutes?)\s+(?:timeout|latency)", re.IGNORECASE),
+                ],
+                "triggers": ["timeout", "latency", "delay", "how long", "threshold"],
+            },
+            {
+                "name": "requests",
+                "patterns": [
+                    re.compile(r"(?:max[_-]?requests?|concurrent[ -]?requests?|rate[ -]?limit)[^\d\n\.,;]{0,40}?(\d+)", re.IGNORECASE),
+                    re.compile(r"(\d+)\s*(?:qps|rps|req/s|requests/sec)", re.IGNORECASE),
+                ],
+                "triggers": ["max_requests", "concurrent", "rate limit", "qps", "rps", "throughput"],
+            },
+            {
+                "name": "memory",
+                "patterns": [
+                    re.compile(r"(?:memory|ram|heap|cache[ -]?size)[^\d\n\.,;]{0,40}?(\d+(?:\.\d+)?)\s*(mb|gb|tb|kb|bytes)\b", re.IGNORECASE),
+                    re.compile(r"(\d+(?:\.\d+)?)\s*(mb|gb|tb|kb)\s*(?:memory|ram|heap|cache)", re.IGNORECASE),
+                ],
+                "triggers": ["memory", "ram", "heap", "size", "cache"],
+            },
+            {
+                "name": "port",
+                "patterns": [
+                    re.compile(r"\bport\s*(?:is\s*|number\s*is\s*|:\s*)?(\d{2,5})\b", re.IGNORECASE),
+                ],
+                "triggers": ["port"],
+            },
+        ]
+
+        # 4. Check Metric Conflicts
+        for m in metric_definitions:
+            # Skip if query does not ask about this metric type
+            if not any(t in query_lower for t in m["triggers"]):
+                continue
+
+            # Non-metric entity query (e.g. asking which service experienced 504 timeouts)
+            if query_lower.startswith("which service") or query_lower.startswith("who ") or "which component" in query_lower:
+                continue
+
+            doc_values: Dict[str, Set[str]] = {}
+            for chunk in primary_chunks:
+                title = chunk.document_title or "Doc"
+                vals: Set[str] = set()
+                for p in m["patterns"]:
+                    for match in p.finditer(chunk.chunk.content):
+                        vals.add(match.group(1))
+                if vals:
+                    doc_values[title] = doc_values.get(title, set()).union(vals)
+
+            doc_names = list(doc_values.keys())
+            for i in range(len(doc_names)):
+                for j in range(i + 1, len(doc_names)):
+                    doc_a, doc_b = doc_names[i], doc_names[j]
+                    val_a = doc_values[doc_a]
+                    val_b = doc_values[doc_b]
+                    if val_a != val_b and not (val_a & val_b):
+                        mname = m["name"]
+                        return ConflictDetail(
+                            has_conflict=True,
+                            conflict_type="numerical",
+                            description=f"Documents '{doc_a}' and '{doc_b}' assert conflicting metrics for {mname}: {sorted(list(val_a))} vs {sorted(list(val_b))}",
+                            competing_claims=[
+                                {"document": doc_a, "values": sorted(list(val_a))[:3]},
+                                {"document": doc_b, "values": sorted(list(val_b))[:3]},
+                            ],
+                        )
 
         return ConflictDetail(has_conflict=False)
 
