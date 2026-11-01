@@ -1,0 +1,108 @@
+flowchart TB
+    %% =========================================================================
+    %% DOMAIN BOUNDARY & BOUNDED CONTEXT DIAGRAM — DDD ARCHITECTURE
+    %% =========================================================================
+
+    subgraph DOMAIN_IAM ["1. Identity & Access Management (IAM)"]
+        direction TB
+        Workspace["Workspace (Tenant Root)"]
+        User["User (Engineer / Admin / Viewer)"]
+        Workspace --> User
+    end
+
+    subgraph DOMAIN_DOCS ["2. Document Management & Versioning"]
+        direction TB
+        Document["Document (Logical Asset)"]
+        DocumentVersion["DocumentVersion (Immutable Physical)"]
+        Document --> DocumentVersion
+    end
+
+    subgraph DOMAIN_INGEST ["3. Document Processing Pipeline"]
+        direction TB
+        ProcessingJob["ProcessingJob (Async State Machine)"]
+    end
+
+    subgraph DOMAIN_KNOWLEDGE ["4. Knowledge & Vector Engine"]
+        direction TB
+        DocumentChunk["DocumentChunk (Text Segment)"]
+        ChunkEmbedding["ChunkEmbedding (1536d HNSW Vector)"]
+        DocumentChunk --> ChunkEmbedding
+    end
+
+    subgraph DOMAIN_RETRIEVAL ["5. Retrieval & Grounding Audit"]
+        direction TB
+        RetrievalExecution["RetrievalExecution (Hybrid & Rerank)"]
+        RetrievalCandidate["RetrievalCandidate (Fused Candidates)"]
+        RetrievalExecution --> RetrievalCandidate
+    end
+
+    subgraph DOMAIN_CHAT ["6. Conversational AI & Citations"]
+        direction TB
+        Conversation["Conversation (Multi-turn Session)"]
+        Message["Message (User / Assistant / System)"]
+        MessageCitation["MessageCitation (Passage Link)"]
+        Conversation --> Message
+        Message --> MessageCitation
+    end
+
+    subgraph DOMAIN_AGENT ["7. Autonomous Agent & Tool Tracing"]
+        direction TB
+        AgentRun["AgentRun (Multi-Step Goal Loop)"]
+        AgentToolExecution["AgentToolExecution (Step Audit)"]
+        AgentRun --> AgentToolExecution
+    end
+
+    subgraph DOMAIN_LLM ["8. LLM Telemetry & Fallback Accounting"]
+        direction TB
+        LLMUsageLog["LLMUsageLog (Token & Cost Audit)"]
+    end
+
+    subgraph DOMAIN_EVAL ["9. Evaluation & Quality Benchmark"]
+        direction TB
+        EvaluationDataset["EvaluationDataset (Benchmark Suite)"]
+        EvaluationQuestion["EvaluationQuestion (20+ Q Items)"]
+        EvaluationRun["EvaluationRun (RAGAS Scoring)"]
+        EvaluationResult["EvaluationResult (Item Breakdown)"]
+        EvaluationDataset --> EvaluationQuestion
+        EvaluationDataset --> EvaluationRun
+        EvaluationRun --> EvaluationResult
+        EvaluationQuestion --> EvaluationResult
+    end
+
+    subgraph DOMAIN_AUDIT ["10. System Activity & Audit"]
+        direction TB
+        AuditLog["AuditLog (Security & Admin Events)"]
+    end
+
+    %% Cross-Domain Relationships
+    Workspace ==>|"Owns"| Document
+    Workspace ==>|"Scans"| Conversation
+    Workspace ==>|"Tracks"| LLMUsageLog
+    User ==>|"Uploads"| Document
+    User ==>|"Conducts"| Conversation
+    User ==>|"Executes"| AgentRun
+
+    DocumentVersion ==>|"Triggers"| ProcessingJob
+    DocumentVersion ==>|"Decomposed Into"| DocumentChunk
+
+    DocumentChunk -.->|"Scored By"| RetrievalCandidate
+    DocumentChunk ==>|"Cited By"| MessageCitation
+
+    Conversation ==>|"Coordinates"| RetrievalExecution
+    Conversation ==>|"Houses"| AgentRun
+    RetrievalExecution ==>|"Injects Grounded Context"| Message
+    AgentRun ==>|"Produces Answer In"| Message
+
+    %% Styling
+    classDef iamNode fill:#EFF6FF,stroke:#3B82F6,stroke-width:1.5px,color:#1E3A8A;
+    classDef docNode fill:#F0FDF4,stroke:#22C55E,stroke-width:1.5px,color:#14532D;
+    classDef knowNode fill:#FAF5FF,stroke:#A855F7,stroke-width:1.5px,color:#581C87;
+    classDef chatNode fill:#FFFBEB,stroke:#F59E0B,stroke-width:1.5px,color:#78350F;
+    classDef evalNode fill:#FEF2F2,stroke:#EF4444,stroke-width:1.5px,color:#7F1D1D;
+
+    class Workspace,User iamNode;
+    class Document,DocumentVersion,ProcessingJob docNode;
+    class DocumentChunk,ChunkEmbedding,RetrievalExecution,RetrievalCandidate knowNode;
+    class Conversation,Message,MessageCitation,AgentRun,AgentToolExecution chatNode;
+    class EvaluationDataset,EvaluationQuestion,EvaluationRun,EvaluationResult,LLMUsageLog,AuditLog evalNode;
+

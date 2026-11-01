@@ -1,0 +1,114 @@
+sequenceDiagram
+    autonumber
+    %% =========================================================================
+    %% DATA FLOW DIAGRAM: INGESTION PIPELINE & GROUNDED RAG PIPELINE
+    %% =========================================================================
+
+    actor Engineer as Engineering User
+    participant WebClient as React 18 SPA
+    participant Gateway as FastAPI Ingress
+    participant DocSvc as Document Service
+    participant TaskQueue as Redis 7 Queue
+    participant Worker as Background Worker
+    participant Extractor as PyMuPDF / Parsers
+    participant RAGSvc as RAG Orchestrator
+    participant Retrieval as Hybrid Retrieval (RRF)
+    participant VectorDB as PostgreSQL (pgvector)
+    participant RelationalDB as PostgreSQL (Relational)
+    participant ObjectStore as S3 / Doc Storage
+    participant Router as LLM Router & Fallback
+    participant AIProvider as External LLM (Claude / OpenAI)
+
+    %% -------------------------------------------------------------------------
+    %% FLOW 1: ASYNCHRONOUS DOCUMENT INGESTION & VECTOR INDEXING
+    %% -------------------------------------------------------------------------
+    rect rgb(240, 249, 255)
+        Note over Engineer, ObjectStore: FLOW 1: ASYNCHRONOUS DOCUMENT INGESTION & INDEXING PIPELINE
+        Engineer->>WebClient: Upload technical document (PDF, TXT, MD, CSV)
+        WebClient->>Gateway: POST /api/v1/documents (Multipart File + Metadata)
+        Gateway->>Gateway: Validate MIME type, magic bytes, and size (<25MB)
+        Gateway->>DocSvc: Process Ingestion Request
+        DocSvc->>DocSvc: Compute SHA-256 Content Hash
+        DocSvc->>RelationalDB: Check for duplicate hash (workspace_id, content_hash)
+        alt Duplicate Detected
+            DocSvc-->>Gateway: Reject duplicate or return existing doc reference
+            Gateway-->>WebClient: 409 Conflict / Existing Document Info
+        else Unique File
+            DocSvc->>ObjectStore: Persist raw document file
+            DocSvc->>RelationalDB: Insert document record (Status: 'PENDING')
+            DocSvc->>TaskQueue: Enqueue ingestion job (doc_id, content_hash)
+            DocSvc-->>Gateway: Ingestion Job Accepted
+            Gateway-->>WebClient: 202 Accepted (doc_id, status: 'PENDING')
+            
+            TaskQueue->>Worker: Dequeue ingestion job (Acquire Redis lock)
+            Worker->>RelationalDB: Update document status -> 'PROCESSING'
+            Worker->>ObjectStore: Stream file bytes
+            Worker->>Extractor: Extract text, headings, and structural metadata
+            Extractor-->>Worker: Clean normalized text stream
+            Worker->>Worker: Chunk text (Recursive 512-1024 tokens, 15% overlap)
+            Worker->>Router: Request batch embeddings (OpenAI text-embedding-3-small)
+            Router->>AIProvider: Embedding API call (1536d vectors)
+            AIProvider-->>Router: Vector embeddings array
+            Router-->>Worker: Embeddings response
+            Worker->>VectorDB: Insert chunks + vector embeddings (pgvector HNSW)
+            Worker->>RelationalDB: Insert full-text search tsvector + chunk metadata
+            Worker->>RelationalDB: Update document status -> 'INDEXED'
+            Worker->>TaskQueue: Release Redis lock
+        end
+    end
+
+    %% -------------------------------------------------------------------------
+    %% FLOW 2: EVIDENCE-BASED GROUNDED RAG PIPELINE
+    %% -------------------------------------------------------------------------
+    rect rgb(254, 242, 242)
+        Note over Engineer, AIProvider: FLOW 2: EVIDENCE-BASED QUESTION ANSWERING & RAG PIPELINE
+        Engineer->>WebClient: Submit query ("Why did database connection fail in Incident 104?")
+        WebClient->>Gateway: POST /api/v1/chat/query (session_id, query, filters)
+        Gateway->>Gateway: Validate JWT auth token & apply rate limiting
+        Gateway->>RAGSvc: Orchestrate Grounded RAG Query
+        RAGSvc->>RelationalDB: Retrieve conversation turn history & summary
+        RelationalDB-->>RAGSvc: Active session window (last K turns)
+        RAGSvc->>RAGSvc: Query Rewriter (De-contextualize & resolve pronouns)
+        
+        par Parallel Retrieval Stages
+            RAGSvc->>Router: Generate query embedding vector (1536d)
+            Router->>AIProvider: text-embedding-3-small
+            AIProvider-->>Router: Query vector
+            Router-->>RAGSvc: Query embedding
+            RAGSvc->>Retrieval: Dense vector similarity search (pgvector cosine)
+            Retrieval->>VectorDB: SELECT top_k by cosine distance
+            VectorDB-->>Retrieval: Vector search candidate chunks
+        and Lexical Search
+            RAGSvc->>Retrieval: Sparse full-text keyword search (BM25 / GIN tsvector)
+            Retrieval->>RelationalDB: SELECT top_k by text match rank
+            RelationalDB-->>Retrieval: Keyword search candidate chunks
+        end
+
+        Retrieval->>Retrieval: Reciprocal Rank Fusion (RRF) candidate merging
+        Retrieval->>Retrieval: Cross-Encoder Reranking (Semantic relevance scoring)
+        Retrieval-->>RAGSvc: Top filtered & verified context chunks
+        
+        alt No Chunks Above Confidence Threshold (<0.65)
+            RAGSvc-->>Gateway: Return graceful "Insufficient evidence in documents"
+            Gateway-->>WebClient: Honest negative answer (No hallucinations)
+        else Relevant Chunks Found
+            RAGSvc->>RAGSvc: Wrap chunks in untrusted delimiters (<untrusted_document_context>)
+            RAGSvc->>RAGSvc: Assemble prompt (System rules + Context + Query)
+            RAGSvc->>Router: Dispatch prompt to primary LLM (Claude 3.5 Sonnet)
+            alt Primary Provider Fails (HTTP 429 / 5xx / Timeout)
+                Router->>Router: Circuit breaker triggers -> Failover to OpenAI GPT-4o
+                Router->>AIProvider: OpenAI completion request
+                AIProvider-->>Router: Fallback response + tokens used
+            else Primary Provider Succeeds
+                Router->>AIProvider: Anthropic completion request
+                AIProvider-->>Router: Primary response + tokens used
+            end
+            Router-->>RAGSvc: Generated answer with citation tags [Doc: X, Chunk: Y]
+            RAGSvc->>RAGSvc: Grounding & citation validation check
+            RAGSvc->>RelationalDB: Persist user query, assistant answer, citations, token logs
+            RAGSvc-->>Gateway: Deliver response payload with verified citations
+            Gateway-->>WebClient: Stream answer with interactive clickable citations
+            WebClient-->>Engineer: Render grounded answer + source drawer
+        end
+    end
+

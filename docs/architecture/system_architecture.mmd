@@ -1,0 +1,129 @@
+flowchart TB
+    %% =========================================================================
+    %% SYSTEM ARCHITECTURE — ENGINEERING INTELLIGENCE PLATFORM
+    %% =========================================================================
+
+    subgraph CLIENT_TIER ["Client Presentation Tier (Browser)"]
+        User(["Engineering User / SRE"]):::actorNode
+        subgraph SPA ["React 18 + Vite + TypeScript SPA"]
+            AuthUI["Auth & Route Guard<br/>(JWT / Session)"]
+            DocUI["Document Manager<br/>(Upload / Metadata)"]
+            ChatUI["Knowledge Chat<br/>(Markdown / Citations)"]
+            AgentUI["Agent Studio<br/>(Step Execution View)"]
+            DashUI["Dashboard & Analytics<br/>(Tokens / Latency / Logs)"]
+        end
+        User <-->|"HTTPS / WSS / REST"| SPA
+    end
+
+    subgraph CLOUD_INFRA ["Production Cloud Boundary (AWS / Containerized Environment)"]
+
+        subgraph INGRESS_TIER ["API Ingress & Gateway Tier"]
+            Nginx["Nginx Reverse Proxy<br/>(SSL Termination & CORS)"]
+            FastAPIGateway["FastAPI Application Server<br/>(Uvicorn Async ASGI)"]
+            AuthMiddleware["Auth & RBAC Middleware<br/>(JWT Verification)"]
+            RateLimiter["Rate Limiting & Input Guard<br/>(Pydantic Validation)"]
+
+            Nginx <-->|"Reverse Proxy"| FastAPIGateway
+            FastAPIGateway --> AuthMiddleware --> RateLimiter
+        end
+
+        subgraph BACKEND_TIER ["Modular Monolith Backend Services (Python 3.11+)"]
+            DocService["Document Ingestion Service<br/>(PyMuPDF / Parsers / SHA-256)"]
+            RAGService["Advanced RAG Orchestrator<br/>(Context Assembly & Verification)"]
+            RetrievalService["Hybrid Retrieval Engine<br/>(Dense Vector + BM25 FullText)"]
+            RerankService["Cross-Encoder Reranker<br/>(Semantic Score & Rerank)"]
+            AgentService["Autonomous Agent Engine<br/>(Loop & Parameter Validation)"]
+            MemoryService["Conversational Memory Service<br/>(Sliding Window & Summarization)"]
+            EvalService["Evaluation Harness<br/>(RAGAS / DeepEval Suite)"]
+
+            subgraph AGENT_TOOLS ["Controlled Agent Tool Suite"]
+                ToolSearch["Tool 1: KB Search<br/>(Vector & Metadata Query)"]
+                ToolAnalyze["Tool 2: Doc Analysis<br/>(Events / Causes / Symptoms)"]
+                ToolReport["Tool 3: Structured Report<br/>(Executive Findings & Advice)"]
+            end
+
+            subgraph LLM_ABSTRACTION ["LLM Provider Abstraction & Resiliency"]
+                Router["Provider Fallback Router<br/>(Circuit Breaker & Token Accounting)"]
+                OpenAIAdapter["OpenAI Adapter<br/>(GPT-4o / Embeddings)"]
+                AnthropicAdapter["Anthropic Adapter<br/>(Claude 3.5 Sonnet)"]
+                Router --> OpenAIAdapter
+                Router --> AnthropicAdapter
+            end
+        end
+
+        subgraph ASYNC_TIER ["Asynchronous Processing Tier"]
+            RedisQueue[("Redis 7<br/>Task Queue & Locks")]
+            WorkerPool["Background Workers<br/>(Chunking / Embedding Tasks)"]
+            RedisQueue <--> WorkerPool
+        end
+
+        subgraph DATA_TIER ["Persistence & State Tier"]
+            PostgresRelational[("PostgreSQL 16 DB<br/>Users / Docs / Sessions / Logs")]
+            PgVectorStore[("pgvector Extension<br/>HNSW 1536d Cosine Index")]
+            DocStore[("Object Storage / S3<br/>Raw Technical Documents")]
+            CacheStore[("Redis 7 Cache<br/>Embeddings & Query Cache")]
+        end
+
+        subgraph TELEMETRY_TIER ["Observability & Monitoring"]
+            Logger["Structured JSON Logger<br/>(Correlation ID & Audit Trail)"]
+            MetricsCollector["Prometheus / Metrics Exporter<br/>(Latency & Token Tracking)"]
+        end
+    end
+
+    subgraph EXTERNAL_PROVIDERS ["External AI Model Providers"]
+        OpenAIAPI["OpenAI API<br/>(text-embedding-3-small / GPT-4o)"]
+        AnthropicAPI["Anthropic API<br/>(Claude 3.5 Sonnet)"]
+    end
+
+    %% Wiring Connections
+    SPA <-->|"REST API / SSE Streams"| Nginx
+
+    RateLimiter --> DocService
+    RateLimiter --> RAGService
+    RateLimiter --> AgentService
+    RateLimiter --> MemoryService
+    RateLimiter --> EvalService
+
+    DocService -->|"Dispatch Ingestion Job"| RedisQueue
+    DocService -->|"Store Raw Files"| DocStore
+    WorkerPool -->|"Batch Vectors"| PgVectorStore
+    WorkerPool -->|"Update Job Status"| PostgresRelational
+    WorkerPool -->|"Generate Embeddings"| Router
+
+    RAGService -->|"Fetch Context History"| MemoryService
+    RAGService -->|"Execute Hybrid Search"| RetrievalService
+    RetrievalService -->|"Vector Cosine Search"| PgVectorStore
+    RetrievalService -->|"BM25 Full-Text Search"| PostgresRelational
+    RetrievalService -->|"Rerank Candidates"| RerankService
+    RerankService -->|"Top Ranked Evidence"| RAGService
+    RAGService -->|"Prompt with Guardrails"| Router
+
+    AgentService -->|"Select & Invoke"| AGENT_TOOLS
+    ToolSearch --> RetrievalService
+    ToolAnalyze --> DocService
+    ToolReport --> Router
+    AgentService -->|"Reason & Plan"| Router
+
+    MemoryService <-->|"Session & Turns"| PostgresRelational
+    MemoryService <-->|"Fast Session Cache"| CacheStore
+
+    Router -->|"Tokens & Latency"| Logger
+    Router -->|"Metric Counters"| MetricsCollector
+
+    OpenAIAdapter <-->|"HTTPS REST"| OpenAIAPI
+    AnthropicAdapter <-->|"HTTPS REST"| AnthropicAPI
+
+    %% Styling Classes
+    classDef actorNode fill:#1E293B,stroke:#0F172A,stroke-width:2px,color:#FFFFFF,font-weight:bold;
+    classDef clientNode fill:#EFF6FF,stroke:#3B82F6,stroke-width:1.5px,color:#1E3A8A;
+    classDef serviceNode fill:#F8FAFC,stroke:#64748B,stroke-width:1.5px,color:#0F172A;
+    classDef dataNode fill:#F0FDF4,stroke:#22C55E,stroke-width:1.5px,color:#14532D;
+    classDef aiNode fill:#FAF5FF,stroke:#A855F7,stroke-width:1.5px,color:#581C87;
+    classDef queueNode fill:#FFFBEB,stroke:#F59E0B,stroke-width:1.5px,color:#78350F;
+
+    class SPA,AuthUI,DocUI,ChatUI,AgentUI,DashUI clientNode;
+    class DocService,RAGService,RetrievalService,RerankService,AgentService,MemoryService,EvalService,WorkerPool serviceNode;
+    class PostgresRelational,PgVectorStore,DocStore,CacheStore dataNode;
+    class Router,OpenAIAdapter,AnthropicAdapter,OpenAIAPI,AnthropicAPI,ToolSearch,ToolAnalyze,ToolReport aiNode;
+    class RedisQueue queueNode;
+

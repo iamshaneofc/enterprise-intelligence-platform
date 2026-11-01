@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: eip_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: engineering_intelligence
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d engineering_intelligence"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: eip_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgrespassword@db:5432/engineering_intelligence
+      - SECRET_KEY=eip-enterprise-production-super-secret-key-replace-me-12345
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - STORAGE_DIR=/app/storage/documents
+      - USE_FAKE_LLM=${USE_FAKE_LLM:-false}
+      - USE_FAKE_EMBEDDINGS=${USE_FAKE_EMBEDDINGS:-false}
+    ports:
+      - "8000:8000"
+    volumes:
+      - document_storage:/app/storage/documents
+
+volumes:
+  postgres_data:
+  document_storage:
+
