@@ -199,3 +199,121 @@ def test_rag_service_pre_generation_abstention(db_session: Session):
     assert resp.model_used == "evidence_sufficiency_gate"
     assert len(resp.citations) == 0
 
+
+# ---------------------------------------------------------------------------
+# 4. Phase 2 Regression Tests: Evidence Gate Semantic Conflict Detection
+# ---------------------------------------------------------------------------
+
+def test_evidence_gate_q39_no_false_conflict_on_incident_and_timeouts():
+    """Q39: Unrelated incident IDs, timestamps and HTTP status codes must not trigger false conflict."""
+    gate = EvidenceSufficiencyGate()
+    chunks = [
+        make_retrieved_chunk(
+            "c1",
+            "## Metadata - Incident ID: INC-104 - Date: 2026-03-15 - Outage Start: 14:22 UTC - Primary Service: Accounts & Billing Service. 504 Gateway Timeouts occurred.",
+            "incident_104_db_pool_outage",
+            score=0.85,
+        ),
+        make_retrieved_chunk(
+            "c2",
+            "API Gateway Latency Runbook: timeout is configured to 15s. P99 threshold is 3000ms.",
+            "api_gateway_latency_runbook",
+            score=0.80,
+        ),
+    ]
+    query = "Which service experienced 504 Gateway Timeouts during Incident 104?"
+    assessment = gate.assess_evidence(query, chunks)
+    assert assessment.decision != EvidenceDecision.CONFLICTING
+    assert assessment.conflict is None or not assessment.conflict.has_conflict
+
+
+def test_evidence_gate_genuine_connection_conflict():
+    """Genuine contradictory claims for the same metric must trigger CONFLICTING."""
+    gate = EvidenceSufficiencyGate()
+    chunks = [
+        make_retrieved_chunk(
+            "c1",
+            "PostgreSQL connection pool exhausted 200 connections at 14:22 UTC on 2026-03-15.",
+            "Incident Report A",
+            score=0.85,
+        ),
+        make_retrieved_chunk(
+            "c2",
+            "PostgreSQL connection pool exhausted 800 connections during the outage.",
+            "Incident Report B",
+            score=0.82,
+        ),
+    ]
+    query = "How many connections were exhausted during the PostgreSQL pool incident?"
+    assessment = gate.assess_evidence(query, chunks)
+    assert assessment.decision == EvidenceDecision.CONFLICTING
+    assert assessment.conflict is not None
+    assert assessment.conflict.has_conflict is True
+    assert "connections" in assessment.conflict.description
+
+
+def test_evidence_gate_different_metrics_no_conflict():
+    """Different metrics (e.g. timeout vs connection pool size) must not be treated as conflicting."""
+    gate = EvidenceSufficiencyGate()
+    chunks = [
+        make_retrieved_chunk(
+            "c1",
+            "The API gateway timeout is lowered to 5s.",
+            "Gateway Spec",
+            score=0.80,
+        ),
+        make_retrieved_chunk(
+            "c2",
+            "The database connection pool is configured to 200 connections.",
+            "Database Spec",
+            score=0.78,
+        ),
+    ]
+    query = "What is the timeout and connection pool limit?"
+    assessment = gate.assess_evidence(query, chunks)
+    assert assessment.decision != EvidenceDecision.CONFLICTING
+
+
+def test_evidence_gate_different_dates_or_incidents_no_conflict():
+    """Different incidents with different dates must not be treated as conflicting."""
+    gate = EvidenceSufficiencyGate()
+    chunks = [
+        make_retrieved_chunk(
+            "c1",
+            "Incident 101 occurred on 2025-01-10.",
+            "Incident 101 Log",
+            score=0.80,
+        ),
+        make_retrieved_chunk(
+            "c2",
+            "Incident 102 occurred on 2026-03-15.",
+            "Incident 102 Log",
+            score=0.79,
+        ),
+    ]
+    query = "When did Incident 101 occur?"
+    assessment = gate.assess_evidence(query, chunks)
+    assert assessment.decision != EvidenceDecision.CONFLICTING
+
+
+def test_evidence_gate_missing_numerical_evidence_no_conflict():
+    """Documents lacking numerical metrics must not create artificial conflicts."""
+    gate = EvidenceSufficiencyGate()
+    chunks = [
+        make_retrieved_chunk(
+            "c1",
+            "The authentication service uses asymmetric RSA tokens.",
+            "Auth Spec",
+            score=0.80,
+        ),
+        make_retrieved_chunk(
+            "c2",
+            "Tokens are validated against the public key endpoint.",
+            "Validation Spec",
+            score=0.79,
+        ),
+    ]
+    query = "How does token validation work?"
+    assessment = gate.assess_evidence(query, chunks)
+    assert assessment.decision != EvidenceDecision.CONFLICTING
+

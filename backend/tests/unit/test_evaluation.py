@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from backend.evaluation.metrics import (
+    compute_ir_metrics,
     evaluate_retrieval_precision,
     evaluate_citation_accuracy,
     evaluate_abstention_accuracy,
@@ -19,23 +20,141 @@ from backend.evaluation.runner import EvaluationConfig, QuestionResult, run_eval
 
 
 def test_evaluate_retrieval_precision():
-    """Test retrieval precision evaluation."""
+    """Test retrieval precision evaluation with true IR mathematics."""
     retrieved = [
         {"chunk_id": "c1", "content": "PostgreSQL connection pool exhausted", "score": 0.9},
         {"chunk_id": "c2", "content": "API gateway timeout", "score": 0.7},
     ]
     expected = ["[c_0]"]
     
+    # 1 of 2 retrieved items is relevant; with K=5, precision@5 is 1/5 = 0.2
     metrics = evaluate_retrieval_precision(retrieved, expected, top_k=5)
     assert "precision_at_k" in metrics
     assert "recall_at_k" in metrics
     assert "mrr" in metrics
     assert "ndcg_at_k" in metrics
-    assert metrics["precision_at_k"] == 1.0
+    assert metrics["precision_at_k"] == 0.2
+    assert metrics["recall_at_k"] == 1.0
+    assert metrics["mrr"] == 1.0
+    assert metrics["ndcg_at_k"] == 1.0
+    
+    # When top_k=1, precision@1 is 1/1 = 1.0
+    metrics_top1 = evaluate_retrieval_precision(retrieved, expected, top_k=1)
+    assert metrics_top1["precision_at_k"] == 1.0
     
     # Empty retrieval
     metrics_empty = evaluate_retrieval_precision([], expected, top_k=5)
     assert metrics_empty["precision_at_k"] == 0.0
+    assert metrics_empty["recall_at_k"] == 0.0
+    assert metrics_empty["mrr"] == 0.0
+    assert metrics_empty["ndcg_at_k"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Comprehensive Information Retrieval Mathematics Unit Tests
+# ---------------------------------------------------------------------------
+
+def test_ir_perfect_retrieval():
+    """Fixture A: All 3 relevant documents retrieved at the top (ranks 1, 2, 3) out of 5."""
+    rel_vector = [1, 1, 1, 0, 0]
+    metrics = compute_ir_metrics(rel_vector, k=5, total_relevant=3)
+    assert metrics["precision_at_k"] == 0.6  # 3 / 5
+    assert metrics["recall_at_k"] == 1.0     # 3 / 3
+    assert metrics["mrr"] == 1.0             # 1 / 1
+    assert metrics["ndcg_at_k"] == 1.0       # DCG == IDCG
+
+
+def test_ir_completely_irrelevant_retrieval():
+    """Fixture B: Zero relevant documents in top 5 when 2 exist in corpus."""
+    rel_vector = [0, 0, 0, 0, 0]
+    metrics = compute_ir_metrics(rel_vector, k=5, total_relevant=2)
+    assert metrics["precision_at_k"] == 0.0
+    assert metrics["recall_at_k"] == 0.0
+    assert metrics["mrr"] == 0.0
+    assert metrics["ndcg_at_k"] == 0.0
+
+
+def test_ir_partially_relevant_retrieval():
+    """Fixture C: 2 relevant documents retrieved at ranks 2 and 4 out of 5."""
+    rel_vector = [0, 1, 0, 1, 0]
+    metrics = compute_ir_metrics(rel_vector, k=5, total_relevant=2)
+    assert metrics["precision_at_k"] == 0.4  # 2 / 5
+    assert metrics["recall_at_k"] == 1.0     # 2 / 2
+    assert metrics["mrr"] == 0.5             # 1 / 2
+    # Hand calculation: DCG = 1/log2(3) + 1/log2(5) = 1.0616063
+    # IDCG = 1/log2(2) + 1/log2(3) = 1.6309298
+    # NDCG = 1.0616063 / 1.6309298 = 0.650921
+    assert pytest.approx(metrics["ndcg_at_k"], 1e-5) == 0.650921
+
+
+def test_ir_relevant_documents_at_different_ranks():
+    """Fixture D: Verify MRR = 1/rank across ranks 1 to 5."""
+    for rank in range(1, 6):
+        vector = [0] * 5
+        vector[rank - 1] = 1
+        m = compute_ir_metrics(vector, k=5, total_relevant=1)
+        expected_mrr = round(1.0 / rank, 6)
+        assert pytest.approx(m["mrr"], 1e-5) == expected_mrr
+
+
+def test_ir_empty_retrieval():
+    """Fixture E: Empty candidate list produces zero for all IR metrics without division by zero."""
+    metrics = compute_ir_metrics([], k=5, total_relevant=3)
+    assert metrics["precision_at_k"] == 0.0
+    assert metrics["recall_at_k"] == 0.0
+    assert metrics["mrr"] == 0.0
+    assert metrics["ndcg_at_k"] == 0.0
+
+
+def test_ir_no_relevant_ground_truth_documents():
+    """Fixture F: Unanswerable query with 0 relevant documents in corpus."""
+    rel_vector = [0, 0, 0, 0, 0]
+    metrics = compute_ir_metrics(rel_vector, k=5, total_relevant=0)
+    assert metrics["precision_at_k"] == 0.0
+    assert metrics["recall_at_k"] == 0.0
+    assert metrics["mrr"] == 0.0
+    assert metrics["ndcg_at_k"] == 0.0
+
+
+def test_ir_fewer_than_k_retrieved_chunks():
+    """Fixture G: Only 2 items retrieved when K=5; 1 is relevant."""
+    rel_vector = [1, 0]
+    metrics = compute_ir_metrics(rel_vector, k=5, total_relevant=2)
+    # Precision@5 uses denominator K=5 -> 1/5 = 0.20
+    assert metrics["precision_at_k"] == 0.2
+    # Recall@5 uses total_relevant=2 -> 1/2 = 0.50
+    assert metrics["recall_at_k"] == 0.5
+    assert metrics["mrr"] == 1.0
+    # IDCG@5 for 2 items = 1.0 + 1/log2(3) = 1.6309298
+    # DCG = 1.0 / log2(2) = 1.0
+    # NDCG = 1.0 / 1.6309298 = 0.613147
+    assert pytest.approx(metrics["ndcg_at_k"], 1e-5) == 0.613147
+
+
+def test_ir_multiple_queries_aggregate_averages():
+    """Fixture H: Macro-averages across heterogeneous queries match hand-calculated values."""
+    q1 = {"retrieval": compute_ir_metrics([1, 1, 1, 0, 0], k=5, total_relevant=3)}  # P=0.6, R=1.0, MRR=1.0
+    q2 = {"retrieval": compute_ir_metrics([1, 0, 0, 0, 0], k=5, total_relevant=2)}  # P=0.2, R=0.5, MRR=1.0
+    q3 = {"retrieval": compute_ir_metrics([0, 0, 0, 0, 0], k=5, total_relevant=1)}  # P=0.0, R=0.0, MRR=0.0
+    
+    agg = compute_aggregate_metrics([q1, q2, q3])
+    expected_avg_p = (0.6 + 0.2 + 0.0) / 3   # 0.266667
+    expected_avg_r = (1.0 + 0.5 + 0.0) / 3   # 0.500000
+    expected_avg_mrr = (1.0 + 1.0 + 0.0) / 3 # 0.666667
+    
+    assert pytest.approx(agg["retrieval"]["avg_precision_at_k"], 1e-5) == expected_avg_p
+    assert pytest.approx(agg["retrieval"]["avg_recall_at_k"], 1e-5) == expected_avg_r
+    assert pytest.approx(agg["retrieval"]["avg_mrr"], 1e-5) == expected_avg_mrr
+    assert "avg_ndcg_at_k" in agg["retrieval"]
+
+
+def test_ir_ndcg_ranking_sensitivity():
+    """Fixture I: Placing relevant items higher in rank strictly increases NDCG."""
+    run_a = compute_ir_metrics([1, 0], k=2, total_relevant=1)  # Relevant at rank 1: NDCG = 1.0
+    run_b = compute_ir_metrics([0, 1], k=2, total_relevant=1)  # Relevant at rank 2: NDCG = 0.63093
+    assert run_a["ndcg_at_k"] == 1.0
+    assert pytest.approx(run_b["ndcg_at_k"], 1e-5) == 0.63093
+    assert run_a["ndcg_at_k"] > run_b["ndcg_at_k"]
 
 
 def test_evaluate_citation_accuracy():
