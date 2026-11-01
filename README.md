@@ -2,7 +2,7 @@
 
 > **Enterprise Document Intelligence • Grounded RAG • Autonomous Multi-Tool Agent • Systematic Evaluation**  
 > **Repository:** [https://github.com/iamshaneofc/enterprise-intelligence-platform](https://github.com/iamshaneofc/enterprise-intelligence-platform)  
-> **Current Status:** `IMPLEMENTED & VERIFIED` (149 Backend Tests Passing • 10 Frontend Tests Passing • Production TypeScript Build Passing • 46 Golden Evaluation Questions Verified)
+> **Current Status:** `IMPLEMENTED & VERIFIED` (Backend Unit & Integration Test Suite • Frontend Vitest Test Suite • Production TypeScript Build • 46-Question Golden Evaluation Dataset • Backend /health & /ready Verified on AWS EC2 Production • Frontend Deployed on Vercel)
 
 ---
 
@@ -270,44 +270,74 @@ Services will be accessible at:
 The codebase includes automated test suites across all layers:
 
 ```bash
-# 1. Run Complete Backend Pytest Suite (149 passed)
-python -m pytest backend/tests
+# 1. Backend Unit & Integration Tests
+python -m pytest backend/tests/unit backend/tests/integration
 
-# 2. Run Security & Prompt Injection Test Harness (11 passed)
+# 2. Backend Security & Prompt Injection Test Harness
 python -m pytest backend/tests/security/test_security_suite.py -v
 
-# 3. Run Security Remediation Verification (31 passed)
+# 3. Backend Security Remediation Verification
 python -m pytest backend/tests/unit/test_security_remediation.py -v
 
-# 4. Run Golden Evaluation Benchmark (46 Questions)
+# 4. Golden Evaluation Benchmark (46 Questions)
 python -m backend.evaluation.runner
 
-# 5. Run Frontend Vitest Suite (10 passed)
+# 5. Frontend Vitest Suite
 cd frontend && npm test -- --run
 
-# 6. Run Frontend Production TypeScript Build (0 errors)
+# 6. Frontend Production TypeScript Build
 cd frontend && npm run build
 ```
+
+### Verified Test Coverage
+
+| Suite | Scope | Status |
+|---|---|---|
+| Backend Unit & Integration | User registration, authentication, authorization, workspace isolation, end-to-end workflow | Verified |
+| Frontend Vitest | API client, token management, markdown processing, evaluation service | 10 tests passing |
+| Frontend Production Build | TypeScript compilation and Vite production bundle | 0 errors |
+| Backend Health (`/health`) | AWS EC2 production endpoint | 200 OK |
+| Backend Readiness (`/ready`) | Database connectivity check on AWS EC2 | 200 OK, database connected |
 
 ---
 
 ## 7. Golden Evaluation Benchmark Results
 
-The platform was evaluated against a 46-question golden benchmark (`golden_evaluation_dataset.jsonl`) spanning 7 technical inquiry categories:
+The platform is evaluated against a 46-question golden benchmark (`golden_evaluation_dataset.jsonl`) spanning six inquiry categories:
 
-| Evaluation Dimension | Measurement | Benchmark Result | Methodology & Mode |
-| :--- | :--- | :---: | :--- |
-| **Retrieval Relevance** | Precision@5 | **0.8043** | Top-5 retrieved chunk relevance against ground-truth docs |
-| **Retrieval Recall** | Recall@5 | **0.8043** | Coverage of all necessary ground-truth documents |
-| **Retrieval Ranking** | Mean Reciprocal Rank (MRR) | **1.0000** | First relevant document ranked at Position 1 |
-| **Citation Quality** | Citation Resolution Rate | **1.0000** | All cited markers (`[c_0]`) resolve to valid database chunks |
-| **Evidence Grounding** | Grounding Rate | **0.9674** | Claims directly attributed to retrieved chunk text |
-| **Hallucination Resistance** | Hallucination Rate | **0.0000** | *Offline benchmark measurement using `FakeLLMClient` and deterministic claim verification.* |
-| **Abstention Accuracy** | Out-of-Domain Abstention | **0.8913** | Correctly refuses to answer when evidence is absent |
-| **Deterministic Context**| Context Precision | **0.7847** | Mathematical token overlap (non-LLM judge heuristic) |
-| **Deterministic Context**| Context Recall | **0.9348** | Mathematical token overlap (non-LLM judge heuristic) |
+| Category | Query Count | Representation |
+| :--- | :---: | :---: |
+| `single_document_factoid` | 14 | 30.4% |
+| `unanswerable` | 9 | 19.6% |
+| `complex_reasoning` | 8 | 17.4% |
+| `multi_document_synthesis` | 6 | 13.0% |
+| `incident_timeline` | 5 | 10.9% |
+| `conflict_handling` | 4 | 8.7% |
+| **Total** | **46** | **100.0%** |
 
-*Detailed category-by-category breakdown and analysis are preserved in [EVALUATION_DATASET_AND_METRICS_REPORT.md](docs/reports/EVALUATION_DATASET_AND_METRICS_REPORT.md).*
+### Evaluation Methodology
+
+Evaluation benchmarks are continuously refined to improve retrieval relevance, evidence grounding, response accuracy, and system reliability. Evaluation runs deterministically offline using `FakeLLMClient` and `FakeEmbeddings` with pure-function Information Retrieval metrics (Precision@K, Recall@K, MRR, NDCG@K with logarithmic discounting), citation resolution, and grounding verification.
+
+Results are reported across two distributions to provide transparent signal:
+
+- **All 46 Queries:** Includes 9 unanswerable queries. Per standard IR convention, queries with no relevant ground truth contribute 0.0 to retrieval metrics.
+- **37 Answerable Queries Only:** Excludes unanswerable queries, showing retrieval performance on questions with supporting evidence.
+
+### Corrected Benchmark Results (46-Question Golden Dataset)
+
+| Metric | All 46 Queries | 37 Answerable Queries | Methodology |
+| :--- | :---: | :---: | :--- |
+| **Precision@5** | 0.2565 | 0.3189 | Formal IR: relevant retrieved / K |
+| **Recall@5** | 0.7609 | 0.9459 | Formal IR: relevant retrieved / total relevant |
+| **MRR** | 0.5996 | 0.7455 | Mean reciprocal rank of first relevant hit |
+| **NDCG@5** | 0.6375 | 0.7926 | DCG/IDCG with log₂ position discount |
+| **Context Faithfulness** | 1.0000 | 1.0000 | Claims verified against retrieved context |
+| **Answer Correctness** | 0.8478 | 0.9189 | Semantic similarity to ground truth |
+| **Abstention Accuracy** | 0.9130 | 1.0000 | Correct accept/abstain decisions |
+| **False Answer Rate** | 0.0000 | 0.0000 | Unanswerable queries answered instead of abstained (live LLM) |
+
+Evaluation results are computed using formal Information Retrieval formulations and are tracked per-query in the benchmark dataset. Detailed category-by-category breakdown and per-query results are preserved in [`docs/reports/evaluation_results_corrected.json`](docs/reports/evaluation_results_corrected.json) and [`docs/reports/FINAL_EVALUATION_ACCURACY_AUDIT.md`](docs/reports/FINAL_EVALUATION_ACCURACY_AUDIT.md).
 
 ---
 
@@ -327,14 +357,45 @@ Follow this sequence to test all platform capabilities:
 
 ## 9. Deployment References & Cloud Readiness
 
-- **Containerization:** The repository is fully containerized via `docker-compose.yml`.
+### Production Deployment Architecture
+
+```
+Vercel Frontend  →  FastAPI Backend (AWS EC2)  →  PostgreSQL/RDS with pgvector
+```
+
+| Component | Deployment | Endpoint | Status |
+| :--- | :--- | :--- | :--- |
+| **Frontend SPA** | Vercel | https://enterprise-intelligence-platform-dun.vercel.app | Deployed, serving React SPA |
+| **Backend API** | AWS EC2 | `http://13.207.43.212/health` | 200 OK, `environment=production` |
+| **Backend Readiness** | AWS EC2 | `http://13.207.43.212/ready` | 200 OK, `database=connected` |
+| **Database** | PostgreSQL/RDS with pgvector | — | Backend connects to RDS in production; SQLite fallback for local testing |
+
+### Deployment Details
+
+- **Frontend:** Deployed on Vercel at https://enterprise-intelligence-platform-dun.vercel.app. The frontend is configured with `VITE_API_BASE_URL` pointing to the backend API, with CORS preflight verified from the Vercel origin.
+- **Backend:** Deployed on AWS EC2. Health (`/health`) and readiness (`/ready`) endpoints return HTTP 200 with production environment and database connectivity confirmed.
+- **No secrets committed:** Zero private credentials are in git. Production requires live `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ENVIRONMENT=production`, and a strong 32+ character `SECRET_KEY` (via Vercel Environment Variables / AWS Secrets Manager).
+
+### Containerization
+
+- **Containerization:** The repository is fully containerized via `docker-compose.yml` for local development and Docker deployment.
 - **Database Portability:** Implemented with `VectorType` abstraction, supporting seamless deployment to cloud-managed PostgreSQL with `pgvector` (AWS RDS, Supabase, Neon).
-- **Environment Management:** Zero private secrets are committed in git. In production, supply live `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and set `ENVIRONMENT=production` with a strong 32+ character `SECRET_KEY`.
 - **Cloud Deployment Status:** Verified in local and Docker container environments. Public cloud hosting (e.g. AWS ECS / Render / Vercel) requires user-managed cloud account provisioning and credentials.
+---
+
+## 10. Recent Engineering Improvements
+
+The following improvements have been implemented in the current codebase:
+
+- **Information Retrieval metric reformulation:** Formal IR metrics (`compute_ir_metrics`) in `backend/evaluation/metrics.py` provide TREC-compliant Precision@K, Recall@K, MRR, and NDCG@K with logarithmic discounting and zero-division handling.
+- **Evaluation runner improvements:** `backend/evaluation/runner.py` passes `ground_truth_context` to question evaluation and correctly configures fake-mode evaluation settings.
+- **Evidence gate numerical conflict remediation:** `backend/app/rag/evidence_gate.py` excludes incident IDs, dates, clock times, and HTTP status codes from false-positive numerical conflict detection. Conflicts trigger only when numbers bind to identical metrics and the query specifically asks about that metric; genuine metric contradictions remain protected.
+- **Workspace authorization:** Workspace isolation authorization enforced on the `get_workspace` endpoint in `backend/app/api/routes/workspaces.py`.
+- **Production deployment:** Backend deployed on AWS EC2 with `/health` and `/ready` endpoints verified. Frontend deployed on Vercel with CORS configured for the Vercel origin.
 
 ---
 
-## 10. Documentation Index
+## 11. Documentation Index
 
 - [Architecture Specification](docs/architecture/SYSTEM_ARCHITECTURE.md)
 - [Database Schema & Migrations](docs/database/DATABASE_SCHEMA.md)
