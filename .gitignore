@@ -94,6 +94,12 @@ logs/
 *.swp
 *.swo
 *~
+~$*
 .DS_Store
 Thumbs.db
+
+# Reference repositories and temporary scratch scripts
+reference_repos/
+check_tables_now.py
+
 

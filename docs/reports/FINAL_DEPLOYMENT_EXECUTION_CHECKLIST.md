@@ -1,56 +1,104 @@
-# Final Deployment Execution Checklist & Runbook
+# Final Production Deployment Execution Checklist & Runbook
 
 **Document ID:** `EIP-DEP-RUNBOOK-001`  
-**Target Environment:** AWS EC2 (Backend + PostgreSQL/pgvector) + Vercel (Frontend)  
+**Target Host OS:** Ubuntu 26.04.1 LTS  
+**Target Host Instance:** AWS EC2 `t3.micro` (1 GiB RAM)  
+**Target Database:** PostgreSQL 18.3 + pgvector on AWS RDS (`ap-south-1`)  
+**Target Frontend:** React 18 + Vite on Vercel Edge CDN  
 **Target Region:** `ap-south-1` (Mumbai)  
+**Version:** 1.0.0 (Production Release Candidate)  
 **Date:** November 1, 2026  
 **Auditor / Integration Engineer:** Senior AI Systems Architect & QA Integration Engineer  
 
 ---
 
-## 1. Executive Deployment Summary
+## 1. Executive Deployment Architecture
 
-This runbook defines the exact execution sequence, commands, verification checklists, and risk mitigations for deploying the **Engineering Intelligence Platform (EIP)** to production.
+This runbook defines the exact execution sequence, commands, verification checklists, and operational runbook for deploying the **Engineering Intelligence Platform (EIP)** to production.
 
 ```
-+-----------------------------------------------------------------------------------+
-|                                PRODUCTION ARCHITECTURE                           |
-|                                                                                   |
-|   +-----------------------+              HTTPS / CORS                             |
-|   |   Vercel Edge CDN     | <====================================+                |
-|   |  (React 18 + Vite)    |                                      |                |
-|   |  SPA with vercel.json |                                      |                |
-|   +-----------------------+                                      |                |
-|                                                                  v                |
-|   +---------------------------------------------------------------------------+   |
-|   |   AWS EC2 Instance (ap-south-1) - t3.small / t3.medium                    |   |
-|   |                                                                           |   |
-|   |   +---------------------+   Port 8000   +-----------------------------+   |   |
-|   |   |  eip_backend        | <------------ | Reverse Proxy / Nginx / ALB |   |   |
-|   |   |  FastAPI (2 workers)|               | (SSL Termination)           |   |   |
-|   |   +----------+----------+               +-----------------------------+   |   |
-|   |              |                                                            |   |
-|   |              | Volumes: document_storage (/app/storage/documents)         |   |
-|   |              |                                                            |   |
-|   |              v                                                            |   |
-|   |   +---------------------+                                                 |   |
-|   |   |  eip_postgres       | (pgvector/pgvector:pg16)                        |   |
-|   |   |  Port 5432          | Volume: postgres_data                           |   |
-|   |   |  or AWS RDS pgvector|                                                 |   |
-|   |   +---------------------+                                                 |   |
-|   |                                                                           |   |
-|   |   External AI Providers:                                                  |   |
-|   |   - OpenAI API (GPT-4o + text-embedding-3-small)                          |   |
-|   |   - Langfuse Cloud (Telemetry & Tracing via SDK v5.1.0)                   |   |
-|   +---------------------------------------------------------------------------+   |
-+-----------------------------------------------------------------------------------+
++----------------------------------------------------------------------------------------------------+
+|                                    PRODUCTION ARCHITECTURE (ap-south-1)                           |
+|                                                                                                    |
+|   +------------------------------------+            HTTPS / WSS                                    |
+|   |         Vercel Edge CDN            | <=======================================+                 |
+|   |   (React 18 + Vite + Tailwind)     |                                         |                 |
+|   |   SPA with vercel.json rewrite     |                                         |                 |
+|   +------------------------------------+                                         |                 |
+|                                                                                  v                 |
+|   +--------------------------------------------------------------------------------------------+   |
+|   |   AWS EC2 Instance: Ubuntu 26.04.1 LTS (t3.micro - 1 GiB RAM)                              |   |
+|   |                                                                                            |   |
+|   |   +------------------------------------------------------------------------------------+   |   |
+|   |   |   Nginx Reverse Proxy (Host Level - Port 80 / 443)                                 |   |   |
+|   |   |   - client_max_body_size: 55M (document uploads)                                   |   |   |
+|   |   |   - Timeouts: 120s for LLM reasoning & agent loops                                 |   |   |
+|   |   |   - SSL Termination / Certbot Let's Encrypt                                        |   |   |
+|   |   +------------------------------------------------------------------------------------+   |   |
+|   |                                             | proxy_pass                                   |   |
+|   |                                             v                                              |   |
+|   |   +------------------------------------------------------------------------------------+   |   |
+|   |   |   Docker Container: eip_backend (FastAPI)                                          |   |   |
+|   |   |   - Bound to internal loopback: 127.0.0.1:8000:8000 (No public exposure)          |   |   |
+|   |   |   - Memory limit: 750M (reservations: 256M) for 1 GiB host safety                  |   |   |
+|   |   |   - 1 Uvicorn Worker (WEB_CONCURRENCY=1) to prevent RAM exhaustion                 |   |   |
+|   |   |   - start.sh: strictly enforces mandatory vars, rejects mock providers in prod     |   |   |
+|   |   +-------------------------+----------------------------------------------------------+   |   |
+|   |                             |                                                              |   |
+|   |                             | Volume: document_storage (/app/storage/documents)            |   |
+|   |                             v                                                              |   |
+|   |                   +-------------------+                                                    |   |
+|   |                   |  Host EBS Storage |                                                    |   |
+|   |                   +-------------------+                                                    |   |
+|   +--------------------------------------------------------------------------------------------+   |
+|                                             |                                                      |
+|                 SQL + pgvector (port 5432)  |                                                      |
+|                                             v                                                      |
+|   +--------------------------------------------------------------------------------------------+   |
+|   |   AWS RDS PostgreSQL 18.3 + pgvector                                                       |   |
+|   |   - Managed Automated Backups & Multi-AZ availability                                      |   |
+|   |   - Security Group: Accepts port 5432 ingress only from EC2 Security Group                |   |
+|   |   - Zero local PostgreSQL container in production                                          |   |
+|   +--------------------------------------------------------------------------------------------+   |
+|                                             |                                                      |
+|   +-----------------------------------------+--------------------------------------------------+   |
+|   |   External AI & Observability Providers:                                                   |   |
+|   |   - OpenAI API (Primary: GPT-4o + text-embedding-3-small 1536-dim)                         |   |
+|   |   - Anthropic Claude 3.5 Sonnet (Secondary fallback, optional)                             |   |
+|   |   - Langfuse Cloud SDK v5.1.0 (Telemetry, tracing, latency & token usage, optional)       |   |
+|   +--------------------------------------------------------------------------------------------+   |
++----------------------------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 2. Frontend Deployment Readiness (Vercel)
+## 2. Deployment Status & Responsibility Matrix
 
-### 2.1 Build & Asset Verification
+| Component / Task | Codebase Preparation Status | Live Execution Status | Responsible Party |
+|---|:---:|:---:|:---:|
+| **Frontend Production Build** | **COMPLETED** (0 errors, 4.37s) | Ready for Vercel push | Dev / Operations |
+| **Frontend Vercel Config** | **COMPLETED** (`vercel.json`) | Ready for Vercel deploy | Operations |
+| **API Trailing Slash Fix** | **COMPLETED** (`frontend/src/services/api.ts`) | Staged for commit | Development |
+| **Backend Dockerfile Optimization** | **COMPLETED** (`backend/Dockerfile`) | Staged for commit | Development |
+| **Backend Startup Script** | **COMPLETED** (`backend/start.sh`) | Staged for commit | Development |
+| **Mandatory Environment Validation** | **COMPLETED** (No mock fallback) | Staged for commit | Development |
+| **Production Docker Compose** | **COMPLETED** (`docker-compose.prod.yml`) | Staged for commit | Development |
+| **Local DB Profile Exclusion** | **COMPLETED** (`docker-compose.yml`) | Staged for commit | Development |
+| **Nginx Reverse Proxy Config** | **COMPLETED** (`nginx/eip.conf`) | Staged for commit | Development |
+| **Host Secrets Retrieval Script** | **COMPLETED** (`scripts/fetch_production_secrets.sh`) | Staged for commit | Development |
+| **Git Secret Ignorance (.gitignore)** | **COMPLETED** (`.env*` safe) | Staged for commit | Development |
+| **AWS Secrets Manager Creation** | N/A (Cloud resource) | **PENDING** (In progress by OpenCode) | OpenCode |
+| **EC2 IAM Instance Profile** | N/A (Cloud resource) | **PENDING** (In progress by OpenCode) | OpenCode |
+| **AWS RDS pgvector Provisioning** | N/A (Cloud resource) | **COMPLETED** (PostgreSQL 18.3) | Cloud Architect |
+| **EC2 Host Setup (Ubuntu 26.04)** | Documented below | **PENDING** | Cloud Operator |
+| **Alembic Migrations on RDS** | Documented below | **PENDING** | Cloud Operator |
+| **Vercel Frontend Deployment** | Documented below | **PENDING** | Cloud Operator |
+
+---
+
+## 3. Frontend Deployment Readiness (Vercel)
+
+### 3.1 Build & Asset Verification
 - **Build Command:** `npm run build` (`tsc && vite build`)
 - **Output Directory:** `dist/`
 - **Build Status:** **VERIFIED PASSING** (0 errors, 4.37s compilation)
@@ -61,157 +109,120 @@ This runbook defines the exact execution sequence, commands, verification checkl
   - `dist/assets/index-*.js`: `103.09 kB` (gzip: `23.28 kB`)
   - `dist/assets/vendor-*.js`: `162.78 kB` (gzip: `53.13 kB`)
 
-### 2.2 Environment Variables (Vercel Project Settings)
+### 3.2 Environment Variables (Vercel Project Settings)
 The frontend requires exactly **one** environment variable in Vercel:
 
 | Variable Name | Environment | Value Description | Example Value |
 |---|---|---|---|
-| `VITE_API_BASE_URL` | Production & Preview | Public URL of EC2 Backend API | `http://<EC2-PUBLIC-IP>:8000` or `https://api.yourdomain.com` |
+| `VITE_API_BASE_URL` | Production & Preview | Public URL of EC2 Nginx Reverse Proxy | `http://<EC2-PUBLIC-IP>` or `https://api.yourdomain.com` |
 
 > [!CAUTION]
 > **No Backend Secrets in Frontend:** Verify that `SECRET_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `DATABASE_URL` are **NEVER** prefixed with `VITE_` or added to Vercel. Only `VITE_API_BASE_URL` should exist in Vercel.
 
-### 2.3 Vercel Configuration File (`frontend/vercel.json`)
-The repository contains a production-ready `vercel.json`:
-```json
-{
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "framework": "vite",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
-      ]
-    }
-  ]
-}
-```
-
-### 2.4 Vercel Deployment Steps
+### 3.3 Vercel Deployment Instructions
 1. Navigate to [vercel.com](https://vercel.com) and click **"Add New Project"**.
 2. Import repository `iamshaneofc/enterprise-intelligence-platform`.
 3. Set **Root Directory** to `frontend`.
 4. Framework preset: **Vite**.
 5. Add Environment Variable:
    - Name: `VITE_API_BASE_URL`
-   - Value: `http://<EC2-PUBLIC-IP>:8000` (or your domain/ALB URL)
+   - Value: `http://<EC2-PUBLIC-IP>` (or your domain/ALB URL)
 6. Click **Deploy**.
 7. Note the assigned deployment URL (e.g. `https://eip-frontend.vercel.app`).
-
-### 2.5 CORS Configuration Requirement
-In production, the backend rejects wildcard `*` origins. OpenCode must configure `CORS_ORIGINS` in AWS Secrets Manager (`eip/production/backend`) to match the Vercel URL:
-```json
-"CORS_ORIGINS": "[\"https://eip-frontend.vercel.app\"]"
-```
+8. Add this URL to `CORS_ORIGINS` in AWS Secrets Manager `eip/production/backend`:
+   ```json
+   "CORS_ORIGINS": "[\"https://eip-frontend.vercel.app\"]"
+   ```
 
 ---
 
-## 3. Backend Deployment Compatibility
+## 4. EC2 Ubuntu 26.04.1 LTS Host Setup Runbook
 
-### 3.1 Startup & Health Configuration
-- **Application Entrypoint:** `backend.app.main:app`
-- **Uvicorn Production Command:**
-  ```bash
-  uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 2
-  ```
-- **Liveness Probe Endpoint:** `GET /health`  
-  - Return: `200 OK`
-  - Payload: `{"status": "ok", "service": "Enterprise Intelligence Platform", "version": "0.1.0", "environment": "production"}`
-- **Readiness Probe Endpoint:** `GET /ready`  
-  - Return: `200 OK`
-  - Payload: `{"status": "ready", "database": "connected"}`
+All commands in this section target **Ubuntu 26.04.1 LTS** on an AWS EC2 `t3.micro` instance (`ap-south-1`).
 
-### 3.2 Persistent Document Storage
-- **Container Path:** `/app/storage/documents` (governed by `STORAGE_DIR=/app/storage/documents`)
-- **Docker Compose Volume Mapping:**
-  ```yaml
-  volumes:
-    - document_storage:/app/storage/documents
-  ```
-- **Restart Survival Audit:**
-  - **VERIFIED:** Uploaded PDF and Markdown documents are stored on the Docker host inside the named volume `document_storage`.
-  - Container stops, restarts, and image updates (`docker compose pull && docker compose up -d`) **do not erase** uploaded files.
-
-### 3.3 Critical Blocker Identification & Remediation
-
-> [!WARNING]
-> **BLOCKER 1: Missing AWS CLI in `backend/Dockerfile` runner image**
-> - **Cause:** `backend/start.sh` executes `aws secretsmanager get-secret-value ...`. However, `backend/Dockerfile` runner stage installs only `libpq5`, `curl`, and `jq`, omitting `awscli`.
-> - **Immediate Fix:** Ensure that either:
->   1. OpenCode's host-level deployment script fetches Secrets Manager into a local `.env.production` file and passes it via `docker compose --env-file .env.production up -d`, OR
->   2. `backend/start.sh` is guarded to check if `SECRET_KEY` and `DATABASE_URL` are already present in the environment before invoking `aws`.
-
-> [!WARNING]
-> **BLOCKER 2: Rigid Required Variables in `backend/start.sh`**
-> - **Cause:** Lines 83–99 of `start.sh` require `ANTHROPIC_API_KEY`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY` to be non-empty, exiting with code 1 if empty.
-> - **Immediate Fix:** If Anthropic or Langfuse are optional in production, ensure `start.sh` allows empty strings for optional providers.
-
----
-
-## 4. AWS Deployment Checklist (Exact Commands)
-
-All commands in this section are read-only or standard operational deployment commands.
-
-### Step 1: Connect to EC2 via AWS Systems Manager (SSM)
+### Step 1: Connect to EC2 Host via AWS Systems Manager (SSM)
 ```bash
 # Verify AWS CLI identity
 aws sts get-caller-identity --region ap-south-1
 
-# Connect to EC2 instance via SSM session
+# Start SSM interactive shell
 aws ssm start-session --target <EC2-INSTANCE-ID> --region ap-south-1
 ```
 
-### Step 2: Install Docker & Docker Compose (if not pre-installed)
-
-**For Amazon Linux 2023:**
+### Step 2: System Packages & Dependencies
 ```bash
-sudo dnf update -y
-sudo dnf install -y docker git
-sudo systemctl enable --now docker
-sudo usermod -aG docker ssm-user || sudo usermod -aG docker ec2-user
+# Update package repositories
+sudo apt-get update && sudo apt-get upgrade -y
 
-# Install Docker Compose Plugin
-sudo mkdir -p /usr/local/lib/docker/cli-plugins
-sudo curl -SL https://github.com/docker/compose/releases/download/v2.29.2/docker-compose-linux-x86_64 \
-  -o /usr/local/lib/docker/cli-plugins/docker-compose
-sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-docker compose version
+# Install prerequisite tools (AWS CLI, jq, curl, git, Nginx)
+sudo apt-get install -y ca-certificates curl gnupg git jq awscli nginx
 ```
 
-**For Ubuntu 22.04 / 24.04 LTS:**
+### Step 3: Install Official Docker Engine & Compose Plugin
 ```bash
-sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg git
+# Setup Docker GPG keyring
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
+# Add Docker repository
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# Install Docker Engine, containerd, and Compose plugin
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Enable and start Docker service
 sudo systemctl enable --now docker
+
+# Grant non-root user docker permissions
 sudo usermod -aG docker ubuntu || sudo usermod -aG docker ssm-user
+
+# Verify Docker and Compose installations
+docker --version
 docker compose version
 ```
 
-### Step 3: Clone / Update Repository on EC2
+### Step 4: Configure Nginx Reverse Proxy
 ```bash
-# Target installation directory
+# Navigate to repository directory after cloning (see Step 5)
+# Copy the verified EIP Nginx configuration
+sudo cp /opt/eip/nginx/eip.conf /etc/nginx/sites-available/eip
+
+# Enable the EIP site configuration
+sudo ln -sf /etc/nginx/sites-available/eip /etc/nginx/sites-enabled/eip
+
+# Remove the default Ubuntu welcome page
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Test Nginx syntax
+sudo nginx -t
+
+# Restart and enable Nginx service
+sudo systemctl restart nginx
+sudo systemctl enable nginx
+```
+
+> [!NOTE]
+> **Optional HTTPS with Certbot (Recommended for Custom Domains):**
+> If pointing a domain name to the EC2 IP, configure Let's Encrypt SSL:
+> ```bash
+> sudo apt-get install -y certbot python3-certbot-nginx
+> sudo certbot --nginx -d api.yourdomain.com
+> ```
+
+---
+
+## 5. Backend Deployment & Container Lifecycle
+
+### Step 5: Clone or Update Application Repository
+```bash
+# Target application directory
 sudo mkdir -p /opt/eip
 sudo chown -R $USER:$USER /opt/eip
 cd /opt/eip
 
-# Clone if first time, or pull latest commit
+# Clone if first deployment, or pull latest main branch
 if [ ! -d ".git" ]; then
   git clone https://github.com/iamshaneofc/enterprise-intelligence-platform.git .
 else
@@ -220,170 +231,188 @@ else
   git pull origin main
 fi
 
-# Verify active commit hash
-git log -1 --format="%H %s"
+# Make scripts executable
+chmod +x scripts/fetch_production_secrets.sh backend/start.sh
+
+# Verify latest commit
+git log -1 --format="%H - %s"
 ```
 
-### Step 4: Test Database Connectivity (EC2 to RDS or Docker DB)
-```bash
-# If using AWS RDS PostgreSQL:
-python3 -c "
-import socket
-host = '<RDS-ENDPOINT>'
-port = 5432
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.settimeout(5)
-try:
-    s.connect((host, port))
-    print('SUCCESS: RDS PostgreSQL port 5432 is reachable!')
-except Exception as e:
-    print('FAILED: Cannot reach RDS:', e)
-finally:
-    s.close()
-"
-```
-
-### Step 5: Build & Start Containers
+### Step 6: Fetch Secrets from AWS Secrets Manager
+The EC2 host uses its assigned IAM role to retrieve `eip/production/backend` and write a local, permission-restricted `.env.production` file.
 ```bash
 cd /opt/eip
 
-# Start PostgreSQL and Backend services
-docker compose up -d --build
+# Execute secret retrieval script
+./scripts/fetch_production_secrets.sh
 
-# Verify running containers and health status
-docker compose ps
+# Verify .env.production exists with strict permissions (0600)
+ls -la .env.production
 ```
 
-### Step 6: Execute Alembic Database Migrations
-```bash
-# Apply all database migrations to head
-docker compose exec backend python -m alembic -c backend/alembic.ini upgrade head
+> [!IMPORTANT]
+> **Security Guarantee:** `.env.production` is ignored by `.gitignore` and has file permission `0600` (readable only by the deployment owner). Secrets are **never** logged to stdout or committed to Git.
 
-# Verify current migration status
-docker compose exec backend python -m alembic -c backend/alembic.ini current
+### Step 7: Build & Launch Production Container
+We use `docker-compose.prod.yml`, which starts **only** the `eip_backend` container and connects directly to AWS RDS (no local PostgreSQL container is created).
+```bash
+cd /opt/eip
+
+# Build image and start backend container in detached mode
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+# Inspect container status and health
+docker compose -f docker-compose.prod.yml ps
 ```
 
-### Step 7: Inspect Container Logs & Verify Startup
+### Step 8: Apply Alembic Migrations to AWS RDS
 ```bash
-# Check database logs
-docker compose logs --tail=50 db
+# Run database migrations up to head
+docker compose -f docker-compose.prod.yml exec backend python -m alembic -c backend/alembic.ini upgrade head
 
-# Check backend logs
-docker compose logs --tail=50 backend
+# Confirm current revision
+docker compose -f docker-compose.prod.yml exec backend python -m alembic -c backend/alembic.ini current
 ```
 
-### Step 8: Verify Backend Health Endpoints
+### Step 9: Verify Container Logs
 ```bash
-# Liveness probe
-curl -i http://localhost:8000/health
-
-# Readiness probe (verifies database connection pool)
-curl -i http://localhost:8000/ready
+# View backend startup logs (confirm 1 worker launched, environment validated)
+docker compose -f docker-compose.prod.yml logs --tail=50 backend
 ```
 
 ---
 
-## 5. End-to-End Production Verification Plan (Smoke Tests)
+## 6. Health & Smoke Test Execution Plan
 
-Execute this 10-step smoke test checklist immediately following container startup.
-
-| Step | Verification Task | Expected Result | Pass/Fail |
-|:---:|---|---|:---:|
-| **1** | `GET /health` | HTTP 200, `"status": "ok"` | [ ] |
-| **2** | `GET /ready` | HTTP 200, `"database": "connected"` | [ ] |
-| **3** | User Registration (`POST /api/v1/auth/register`) | HTTP 201, User object with hashed password | [ ] |
-| **4** | User Login (`POST /api/v1/auth/login`) | HTTP 200, JWT token returned | [ ] |
-| **5** | Workspace Isolation (`POST /api/v1/workspaces`) | HTTP 201, Dedicated workspace provisioned | [ ] |
-| **6** | Document Upload (`POST /.../documents/upload`) | HTTP 201, Chunks created with 1536-dim OpenAI vectors | [ ] |
-| **7** | Grounded RAG Query (`POST /.../chat`) | HTTP 200, Answer with `[c_0]` citation from real GPT-4o | [ ] |
-| **8** | Conversational Follow-up (`POST /.../chat`) | HTTP 200, Preserves `conversation_id`, answers multi-turn | [ ] |
-| **9** | Autonomous Agent (`POST /.../agent/investigate`) | HTTP 201, Multi-step tool reasoning with real GPT-4o | [ ] |
-| **10** | Frontend Integration (Browser UI via Vercel) | UI loads, displays workspace, login works, RAG responds | [ ] |
-
-### Automated Smoke Test Script
-Save and run on EC2 to execute steps 1–9 automatically:
+### Step 10: Local Health Checks
 ```bash
+# 1. Direct container probe on loopback (8000)
+curl -i http://127.0.0.1:8000/health
+curl -i http://127.0.0.1:8000/ready
+
+# 2. Probe through Nginx reverse proxy (Port 80)
+curl -i http://127.0.0.1/health
+curl -i http://127.0.0.1/ready
+```
+Both `/health` and `/ready` must return HTTP `200 OK` with JSON bodies:
+```json
+{"status": "ok", "service": "Enterprise Intelligence Platform", "version": "0.1.0", "environment": "production"}
+```
+```json
+{"status": "ready", "database": "connected"}
+```
+
+### Step 11: End-to-End Automated Smoke Test Script
+Save and run on the EC2 host to verify complete user and AI functionality against the live RDS database and OpenAI API:
+
+```python
 cat << 'EOF' > /tmp/prod_smoke_test.py
 import requests, time, sys
 
-BASE = "http://127.0.0.1:8000/api/v1"
+BASE = "http://127.0.0.1/api/v1"
 
-print("1. Testing health...")
-h = requests.get("http://127.0.0.1:8000/health").json()
+print("==================================================================")
+print("EIP Production Automated Smoke Test Suite")
+print("==================================================================")
+
+print("1. Testing Health & Readiness probes via Nginx...")
+h = requests.get("http://127.0.0.1/health").json()
+r = requests.get("http://127.0.0.1/ready").json()
 assert h["status"] == "ok", f"Health failed: {h}"
-print("   ✓ Backend healthy:", h)
+assert r["database"] == "connected", f"Readiness failed: {r}"
+print("   ✓ Health & DB Connectivity verified")
 
-print("2. Registering smoke test user...")
+print("2. Registering production smoke test user...")
 email = f"prod_smoke_{int(time.time())}@example.com"
-reg = requests.post(f"{BASE}/auth/register", json={"email": email, "password": "ProductionPassword123!", "full_name": "Prod Tester"})
-assert reg.status_code == 201, f"Registration failed: {reg.text}"
+reg = requests.post(
+    f"{BASE}/auth/register",
+    json={"email": email, "password": "ProductionPassword123!", "full_name": "Prod Smoke Tester"}
+)
+assert reg.status_code == 201, f"Registration failed ({reg.status_code}): {reg.text}"
+print("   ✓ User registered successfully")
 
-print("3. Logging in...")
-login = requests.post(f"{BASE}/auth/login", json={"email": email, "password": "ProductionPassword123!"}).json()
-token = login["access_token"]
+print("3. Logging in & generating JWT access token...")
+login_resp = requests.post(
+    f"{BASE}/auth/login",
+    json={"email": email, "password": "ProductionPassword123!"}
+)
+assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
+token = login_resp.json()["access_token"]
 headers = {"Authorization": f"Bearer {token}"}
-print("   ✓ JWT acquired")
+print("   ✓ JWT token obtained")
 
-print("4. Creating workspace...")
-ws = requests.post(f"{BASE}/workspaces", json={"name": "Prod Smoke Workspace"}, headers=headers).json()
-ws_id = ws["id"]
-print("   ✓ Workspace created:", ws_id)
+print("4. Creating disposable workspace...")
+ws_resp = requests.post(
+    f"{BASE}/workspaces",
+    json={"name": "Prod Smoke Test Workspace"},
+    headers=headers
+)
+assert ws_resp.status_code == 201, f"Workspace creation failed: {ws_resp.text}"
+ws_id = ws_resp.json()["id"]
+print(f"   ✓ Workspace provisioned: {ws_id}")
 
-print("5. Ingesting test document...")
-doc_bytes = b"# Production Runbook\nDefault timeout is 300 seconds."
-up = requests.post(f"{BASE}/workspaces/{ws_id}/documents/upload", files={"file": ("runbook.md", doc_bytes, "text/markdown")}, headers=headers)
-assert up.status_code == 201, f"Upload failed: {up.text}"
-print("   ✓ Document uploaded and embedded with OpenAI text-embedding-3-small")
+print("5. Ingesting test document & generating real OpenAI embeddings...")
+doc_content = b"# Production Runbook\n\nDefault system worker count is 1 for t3.micro. Maximum upload size is 50MB."
+upload_resp = requests.post(
+    f"{BASE}/workspaces/{ws_id}/documents/upload",
+    files={"file": ("runbook.md", doc_content, "text/markdown")},
+    headers=headers
+)
+assert upload_resp.status_code == 201, f"Upload failed: {upload_resp.text}"
+doc_data = upload_resp.json()
+print(f"   ✓ Document indexed: {doc_data.get('title')} ({doc_data.get('total_chunks')} chunks embedded)")
 
-print("6. Executing Grounded RAG query...")
-chat = requests.post(f"{BASE}/workspaces/{ws_id}/chat", json={"query": "What is the default timeout in the runbook?", "workspace_id": ws_id}, headers=headers).json()
-assert chat["provider_used"] == "openai", f"Not OpenAI: {chat}"
-print("   ✓ Answer:", chat["answer"])
-print("   ✓ Citations:", len(chat.get("citations", [])))
+print("6. Executing Grounded RAG query with OpenAI GPT-4o...")
+chat_resp = requests.post(
+    f"{BASE}/workspaces/{ws_id}/chat",
+    json={"query": "What is the maximum upload size mentioned in the runbook?", "workspace_id": ws_id},
+    headers=headers
+)
+assert chat_resp.status_code == 200, f"Chat failed: {chat_resp.text}"
+chat_data = chat_resp.json()
+assert chat_data.get("provider_used") == "openai", f"Expected OpenAI provider, got: {chat_data.get('provider_used')}"
+assert len(chat_data.get("citations", [])) > 0, "Expected at least 1 citation for grounded query"
+print(f"   ✓ Provider: {chat_data.get('provider_used')} ({chat_data.get('model_used')})")
+print(f"   ✓ Answer: {chat_data.get('answer')[:120]}...")
+print(f"   ✓ Citations: {len(chat_data.get('citations'))} grounded citation(s)")
 
-print("\nALL BACKEND PRODUCTION SMOKE TESTS PASSED!")
+print("\n==================================================================")
+print("SUCCESS: ALL 6 BACKEND PRODUCTION SMOKE TESTS PASSED!")
+print("==================================================================")
 EOF
 python3 /tmp/prod_smoke_test.py
 ```
 
 ---
 
-## 6. Exact Order of Execution (Deploy Timeline)
+## 7. Rollback & Troubleshooting Runbook
 
-```
-+-------------------------------------------------------------------------------+
-| PHASE 1: PRE-FLIGHT SECRETS & IAM (OpenCode Ownership)                         |
-|   1. Generate 32-byte SECRET_KEY                                              |
-|   2. Create AWS Secrets Manager secret 'eip/production/backend'               |
-|   3. Attach SecretsManager:GetSecretValue IAM policy to EC2 instance role     |
-+-------------------------------------------------------------------------------+
-                                     |
-                                     v
-+-------------------------------------------------------------------------------+
-| PHASE 2: EC2 DOCKER & BACKEND BRING-UP (Operator Ownership)                  |
-|   4. Connect to EC2 via AWS SSM                                               |
-|   5. Verify Docker & Docker Compose versions                                  |
-|   6. Git pull latest 'main' branch to /opt/eip                                |
-|   7. Launch containers: docker compose up -d --build                          |
-|   8. Run Alembic migrations: alembic upgrade head                             |
-|   9. Verify curl http://localhost:8000/health and /ready                      |
-+-------------------------------------------------------------------------------+
-                                     |
-                                     v
-+-------------------------------------------------------------------------------+
-| PHASE 3: FRONTEND VERCEL DEPLOYMENT                                           |
-|   10. Deploy frontend to Vercel with VITE_API_BASE_URL=http://<EC2-IP>:8000   |
-|   11. Copy assigned Vercel URL (https://*.vercel.app)                         |
-|   12. Update CORS_ORIGINS in AWS Secrets Manager with Vercel URL              |
-|   13. Restart backend container to apply new CORS origins                     |
-+-------------------------------------------------------------------------------+
-                                     |
-                                     v
-+-------------------------------------------------------------------------------+
-| PHASE 4: PRODUCTION VERIFICATION                                              |
-|   14. Execute /tmp/prod_smoke_test.py on EC2                                  |
-|   15. Open Vercel URL in web browser and verify full user journey             |
-|   16. Confirm LLM interactions in PostgreSQL llm_logs table                   |
-+-------------------------------------------------------------------------------+
+### Rollback Plan
+If an issue occurs after launching a new Docker image:
+```bash
+cd /opt/eip
+
+# 1. Rollback code to previous git commit
+git checkout HEAD~1
+
+# 2. Re-fetch secrets if needed
+./scripts/fetch_production_secrets.sh
+
+# 3. Rebuild and restart container
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+# 4. If migration rollback is required:
+docker compose -f docker-compose.prod.yml exec backend python -m alembic -c backend/alembic.ini downgrade -1
 ```
 
+### Common Troubleshooting Scenarios
+1. **Container exits immediately on startup:**
+   - Run `docker compose -f docker-compose.prod.yml logs backend`.
+   - If error is `MANDATORY variable SECRET_KEY is not set` or `OPENAI_API_KEY is not set`, re-run `./scripts/fetch_production_secrets.sh` and ensure the IAM role has access to `eip/production/backend`.
+2. **502 Bad Gateway from Nginx:**
+   - Verify container is running: `docker compose -f docker-compose.prod.yml ps`.
+   - Test internal port: `curl http://127.0.0.1:8000/health`.
+   - If port 8000 is unreachable, check container memory consumption (`docker stats`) to ensure `t3.micro` did not run out of RAM.
+3. **CORS Error in Vercel Frontend:**
+   - Check `CORS_ORIGINS` in AWS Secrets Manager. Ensure it contains the exact Vercel origin without trailing slashes (e.g. `["https://eip-frontend.vercel.app"]`).
+   - Re-run `./scripts/fetch_production_secrets.sh` and restart the container: `docker compose -f docker-compose.prod.yml restart backend`.
