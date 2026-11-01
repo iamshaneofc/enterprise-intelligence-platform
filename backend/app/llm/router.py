@@ -73,21 +73,52 @@ class LLMFallbackRouter:
         self._primary = primary_client
         self._fallback = fallback_client
 
+    def _create_client(self, provider: str, model: str, is_fallback: bool = False) -> Optional[BaseLLMClient]:
+        """Instantiate configured LLM client with strict error handling and optional mock mode."""
+        provider_norm = (provider or "").strip().lower()
+        if settings.USE_FAKE_LLM:
+            role_label = "fake_fallback" if is_fallback else "fake_primary"
+            return FakeLLMClient(model=f"fake-{model}", provider=role_label)
+
+        if provider_norm == "openai":
+            if not settings.OPENAI_API_KEY:
+                if is_fallback:
+                    return None
+                raise LLMProviderError(
+                    "OpenAI is configured as primary LLM provider, but OPENAI_API_KEY is not set. "
+                    "Configure OPENAI_API_KEY in backend/.env or set USE_FAKE_LLM=true for offline testing."
+                )
+            from backend.app.llm.openai_client import OpenAIClient
+            return OpenAIClient(api_key=settings.OPENAI_API_KEY, model=model)
+
+        elif provider_norm == "anthropic":
+            if not settings.ANTHROPIC_API_KEY:
+                if is_fallback:
+                    return None
+                raise LLMProviderError(
+                    "Anthropic is configured as primary LLM provider, but ANTHROPIC_API_KEY is not set. "
+                    "Configure ANTHROPIC_API_KEY in backend/.env or set USE_FAKE_LLM=true for offline testing."
+                )
+            from backend.app.llm.anthropic_client import AnthropicClient
+            return AnthropicClient(api_key=settings.ANTHROPIC_API_KEY, model=model)
+
+        else:
+            if is_fallback:
+                return None
+            raise LLMProviderError(f"Unsupported LLM provider: '{provider}'. Supported providers: openai, anthropic.")
+
     def _get_primary(self) -> BaseLLMClient:
         if self._primary:
             return self._primary
-        if settings.USE_FAKE_LLM or not settings.ANTHROPIC_API_KEY:
-            return FakeLLMClient(model="fake-claude-3-5-sonnet", provider="fake_primary")
-        from backend.app.llm.anthropic_client import AnthropicClient
-        return AnthropicClient()
+        client = self._create_client(settings.PRIMARY_LLM_PROVIDER, settings.PRIMARY_LLM_MODEL, is_fallback=False)
+        if not client:
+            raise LLMProviderError(f"Failed to initialize primary LLM provider '{settings.PRIMARY_LLM_PROVIDER}'.")
+        return client
 
-    def _get_fallback(self) -> BaseLLMClient:
+    def _get_fallback(self) -> Optional[BaseLLMClient]:
         if self._fallback:
             return self._fallback
-        if settings.USE_FAKE_LLM or not settings.OPENAI_API_KEY:
-            return FakeLLMClient(model="fake-gpt-4o", provider="fake_fallback")
-        from backend.app.llm.openai_client import OpenAIClient
-        return OpenAIClient()
+        return self._create_client(settings.FALLBACK_LLM_PROVIDER, settings.FALLBACK_LLM_MODEL, is_fallback=True)
 
     def _calculate_cost(self, provider: str, model: str, prompt_tokens: int, completion_tokens: int) -> float:
         """Calculate cost based on model pricing."""
@@ -121,6 +152,10 @@ class LLMFallbackRouter:
         except Exception as e:
             # Only fallback on retryable/transient errors
             if is_fallback_error(e):
+                if not fallback:
+                    error_msg = f"Primary LLM provider failed with retryable error ({str(e)}), but no fallback provider is available."
+                    logger.error(error_msg)
+                    raise LLMProviderError(error_msg)
                 logger.warning(f"Primary LLM provider failed with retryable error ({str(e)}). Initiating fallback to secondary provider...")
                 is_fallback = True
                 try:
@@ -222,6 +257,10 @@ def generate_structured(
         return primary.generate_structured(messages, response_model, temperature, max_tokens)
     except Exception as e:
         if is_fallback_error(e):
+            if not fallback:
+                error_msg = f"Primary LLM provider failed with retryable error ({str(e)}), but no fallback provider is available."
+                logger.error(error_msg)
+                raise LLMProviderError(error_msg)
             logger.warning(f"Primary LLM provider failed with retryable error ({str(e)}). Initiating fallback to secondary provider...")
             try:
                 result = fallback.generate_structured(messages, response_model, temperature, max_tokens)

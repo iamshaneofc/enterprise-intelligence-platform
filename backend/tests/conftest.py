@@ -14,6 +14,15 @@ from backend.app.core.config import settings
 settings.USE_FAKE_LLM = True
 settings.USE_FAKE_EMBEDDINGS = True
 
+# Override test-specific settings
+settings.CORS_ORIGINS = []
+settings.PRIMARY_LLM_PROVIDER = "anthropic"
+settings.PRIMARY_LLM_MODEL = "claude-3-5-sonnet-20241022"
+settings.FALLBACK_LLM_PROVIDER = "openai"
+settings.FALLBACK_LLM_MODEL = "gpt-4o"
+settings.SECRET_KEY = "dev-insecure-change-in-production-min-32-chars"
+settings.ENVIRONMENT = "test"
+
 # Disable rate limiting for tests
 settings.RATE_LIMIT_AUTH = 1000
 settings.RATE_LIMIT_AUTH_WINDOW = 1

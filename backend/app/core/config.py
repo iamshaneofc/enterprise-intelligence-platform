@@ -16,7 +16,7 @@ class EmbeddingPricing(TypedDict):
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "backend/.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -51,10 +51,10 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = Field(default=None)
     OPENAI_API_KEY: Optional[str] = Field(default=None)
     
-    PRIMARY_LLM_PROVIDER: str = "anthropic"
-    PRIMARY_LLM_MODEL: str = "claude-3-5-sonnet-20241022"
-    FALLBACK_LLM_PROVIDER: str = "openai"
-    FALLBACK_LLM_MODEL: str = "gpt-4o"
+    PRIMARY_LLM_PROVIDER: str = "openai"
+    PRIMARY_LLM_MODEL: str = "gpt-4o"
+    FALLBACK_LLM_PROVIDER: str = "anthropic"
+    FALLBACK_LLM_MODEL: str = "claude-3-5-sonnet-20241022"
     
     # Per-model LLM pricing (USD per 1K tokens)
     LLM_PRICING: Dict[str, Dict[str, ModelPricing]] = Field(default_factory=lambda: {

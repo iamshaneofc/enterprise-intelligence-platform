@@ -1,16 +1,62 @@
 version: "3.8"
 
 services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: eip_backend
+    restart: always
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set (AWS RDS connection string)}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:?OPENAI_API_KEY must be set}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - FALLBACK_LLM_PROVIDER=${FALLBACK_LLM_PROVIDER:-anthropic}
+      - STORAGE_DIR=/app/storage/documents
+      - USE_FAKE_LLM=false
+      - USE_FAKE_EMBEDDINGS=false
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-false}
+      - CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS must be set (e.g. [\"https://your-app.vercel.app\"])}
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-1}
+    ports:
+      # Listen internally on loopback; exposed externally via Nginx reverse proxy on port 80/443
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - document_storage:/app/storage/documents
+    # Memory constraints optimized for AWS EC2 t3.micro (1 GiB RAM)
+    deploy:
+      resources:
+        limits:
+          memory: 750M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Local Development Database only.
+  # In production on AWS EC2, the backend connects directly to AWS RDS PostgreSQL.
   db:
     image: pgvector/pgvector:pg16
     container_name: eip_postgres
     restart: always
+    profiles:
+      - local
+      - dev
     environment:
       POSTGRES_DB: engineering_intelligence
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -19,30 +65,6 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: eip_backend
-    restart: always
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      - ENVIRONMENT=production
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgrespassword@db:5432/engineering_intelligence
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in production}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - STORAGE_DIR=/app/storage/documents
-      - USE_FAKE_LLM=${USE_FAKE_LLM:-false}
-      - USE_FAKE_EMBEDDINGS=${USE_FAKE_EMBEDDINGS:-false}
-    ports:
-      - "8000:8000"
-    volumes:
-      - document_storage:/app/storage/documents
-
 volumes:
-  postgres_data:
   document_storage:
-
+  postgres_data:

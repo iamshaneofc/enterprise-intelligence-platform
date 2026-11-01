@@ -1,0 +1,511 @@
+{
+  "overall_accuracy": 0.6060606060606061,
+  "total_questions": 33,
+  "passed_count": 20,
+  "by_category": {
+    "direct_factual": {
+      "total": 3,
+      "passed": 3
+    },
+    "vague": {
+      "total": 3,
+      "passed": 2
+    },
+    "paraphrased": {
+      "total": 4,
+      "passed": 2
+    },
+    "follow_up": {
+      "total": 5,
+      "passed": 4
+    },
+    "pronoun_based": {
+      "total": 3,
+      "passed": 0
+    },
+    "multi_hop": {
+      "total": 3,
+      "passed": 2
+    },
+    "context_dependent": {
+      "total": 3,
+      "passed": 1
+    },
+    "ambiguous": {
+      "total": 3,
+      "passed": 0
+    },
+    "unsupported": {
+      "total": 4,
+      "passed": 4
+    },
+    "conflicting_evidence": {
+      "total": 2,
+      "passed": 2
+    }
+  },
+  "results": [
+    {
+      "id": "conv_01",
+      "category": "direct_factual",
+      "question": "What company developed NovaDesk?",
+      "expected": "Nova Technologies",
+      "expected_behavior": "answer",
+      "actual_answer": "NovaDesk was developed by Nova Technologies [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 4349,
+      "passed": true
+    },
+    {
+      "id": "conv_02",
+      "category": "direct_factual",
+      "question": "When was NovaDesk launched?",
+      "expected": "2024",
+      "expected_behavior": "answer",
+      "actual_answer": "NovaDesk was launched in 2024 [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 2901,
+      "passed": true
+    },
+    {
+      "id": "conv_03",
+      "category": "direct_factual",
+      "question": "What is the monthly pricing for NovaDesk?",
+      "expected": "₹499 per month",
+      "expected_behavior": "answer",
+      "actual_answer": "The monthly pricing for NovaDesk is ₹499 [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 4016,
+      "passed": true
+    },
+    {
+      "id": "conv_04",
+      "category": "vague",
+      "question": "Tell me about NovaDesk.",
+      "expected": "NovaDesk is an engineering intelligence and helpdesk ticketing platform developed by Nova Technologies in 2024.",
+      "expected_behavior": "answer",
+      "actual_answer": "NovaDesk is an engineering intelligence and helpdesk ticketing platform developed by Nova Technologies. It was officially launched in 2024 [c_0]. The platform has 25,000 monthly active users and a customer satisfaction rate of 92% [c_2]. It primarily serves the Indian market and is priced at ₹499 per month [c_2].",
+      "is_abstention": false,
+      "citations_count": 2,
+      "citations": [
+        "[c_0]",
+        "[c_2]"
+      ],
+      "latency_ms": 2834,
+      "passed": true
+    },
+    {
+      "id": "conv_05",
+      "category": "vague",
+      "question": "What are the metrics for NovaDesk?",
+      "expected": "25,000 monthly active users, 92% customer satisfaction, and pricing of ₹499 per month.",
+      "expected_behavior": "answer",
+      "actual_answer": "The metrics for NovaDesk are as follows: it has 25,000 monthly active users and a customer satisfaction rate of 92% [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 3367,
+      "passed": true
+    },
+    {
+      "id": "conv_06",
+      "category": "vague",
+      "question": "How is it doing in the market?",
+      "expected": "It serves India with 25,000 monthly active users and 92% customer satisfaction.",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence.\n\nThe provided context only includes basic product metrics such as monthly active users, customer satisfaction, main market, and pricing for NovaDesk. It does not provide comprehensive market performance data such as revenue figures, market share, growth trends, or competitive analysis, which are necessary to evaluate how the product is doing in the market.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 4564,
+      "passed": false
+    },
+    {
+      "id": "conv_07",
+      "category": "paraphrased",
+      "question": "What is the product name?",
+      "expected": "NovaDesk",
+      "expected_behavior": "answer",
+      "actual_answer": "The product name is NovaDesk [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 2927,
+      "passed": true
+    },
+    {
+      "id": "conv_08",
+      "category": "paraphrased",
+      "question": "Which market does it primarily serve?",
+      "expected": "India",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 33.3%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 762,
+      "passed": false
+    },
+    {
+      "id": "conv_09",
+      "category": "paraphrased",
+      "question": "Who is the creator of the platform?",
+      "expected": "Nova Technologies",
+      "expected_behavior": "answer",
+      "actual_answer": "The creator of the platform is Nova Technologies [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 2243,
+      "passed": true
+    },
+    {
+      "id": "conv_10",
+      "category": "paraphrased",
+      "question": "What is the user adoption scale?",
+      "expected": "25,000 monthly active users",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 33.3%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 2182,
+      "passed": false
+    },
+    {
+      "id": "conv_11",
+      "category": "follow_up",
+      "question": "Tell me about NovaDesk.",
+      "expected": "NovaDesk is an engineering intelligence and helpdesk ticketing platform developed by Nova Technologies.",
+      "expected_behavior": "answer",
+      "actual_answer": "NovaDesk is an engineering intelligence and helpdesk ticketing platform developed by Nova Technologies. It was officially launched in 2024 [c_0]. The platform has 25,000 monthly active users and a customer satisfaction rate of 92% [c_2]. It primarily serves the Indian market and is priced at ₹499 per month [c_2].",
+      "is_abstention": false,
+      "citations_count": 2,
+      "citations": [
+        "[c_0]",
+        "[c_2]"
+      ],
+      "latency_ms": 4820,
+      "passed": true
+    },
+    {
+      "id": "conv_12",
+      "category": "follow_up",
+      "question": "Who developed it?",
+      "expected": "Nova Technologies",
+      "expected_behavior": "answer",
+      "actual_answer": "NovaDesk was developed by Nova Technologies [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 2210,
+      "passed": true
+    },
+    {
+      "id": "conv_13",
+      "category": "follow_up",
+      "question": "When was it launched?",
+      "expected": "2024",
+      "expected_behavior": "answer",
+      "actual_answer": "NovaDesk was officially launched in 2024 [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 3228,
+      "passed": true
+    },
+    {
+      "id": "conv_14",
+      "category": "follow_up",
+      "question": "How much does it cost?",
+      "expected": "₹499 per month",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 0.0%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 2172,
+      "passed": false
+    },
+    {
+      "id": "conv_15",
+      "category": "follow_up",
+      "question": "Is its customer satisfaction high?",
+      "expected": "92%",
+      "expected_behavior": "answer",
+      "actual_answer": "The customer satisfaction for NovaDesk is 92% [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 3204,
+      "passed": true
+    },
+    {
+      "id": "conv_16",
+      "category": "pronoun_based",
+      "question": "What is Nova Technologies working on?",
+      "expected": "NovaDesk",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. \n\nThe provided document context does not contain specific information about current projects or initiatives that Nova Technologies is working on. It only provides details about the NovaDesk platform, its launch, and some key metrics.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 2249,
+      "passed": false
+    },
+    {
+      "id": "conv_17",
+      "category": "pronoun_based",
+      "question": "Where do they sell it?",
+      "expected": "India",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 0.0%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 868,
+      "passed": false
+    },
+    {
+      "id": "conv_18",
+      "category": "pronoun_based",
+      "question": "How many people use it every month?",
+      "expected": "25,000",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 40.0%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 779,
+      "passed": false
+    },
+    {
+      "id": "conv_19",
+      "category": "multi_hop",
+      "question": "Compare the customer satisfaction rate and monthly active users of NovaDesk.",
+      "expected": "NovaDesk has 25,000 monthly active users and a 92% customer satisfaction score.",
+      "expected_behavior": "answer",
+      "actual_answer": "The customer satisfaction rate of NovaDesk is 92%, and it has 25,000 monthly active users [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 2619,
+      "passed": true
+    },
+    {
+      "id": "conv_20",
+      "category": "multi_hop",
+      "question": "What is the annual software cost per user based on its monthly pricing?",
+      "expected": "₹499 per month (₹5,988 annually)",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. The synthesized response contained unverified claims or metrics that could not be established from the indexed engineering documentation.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 3223,
+      "passed": false
+    },
+    {
+      "id": "conv_21",
+      "category": "multi_hop",
+      "question": "Summarize the commercial details of NovaDesk including company, market, and subscription fee.",
+      "expected": "Nova Technologies, India, ₹499 per month",
+      "expected_behavior": "answer",
+      "actual_answer": "NovaDesk is a product by Nova Technologies, launched in 2024. Its main market is India, and the subscription fee is ₹499 per month [c_0].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_0]"
+      ],
+      "latency_ms": 2811,
+      "passed": true
+    },
+    {
+      "id": "conv_22",
+      "category": "context_dependent",
+      "question": "Tell me about NovaDesk pricing.",
+      "expected": "₹499 per month",
+      "expected_behavior": "answer",
+      "actual_answer": "The pricing for NovaDesk is ₹499 per month [c_1].",
+      "is_abstention": false,
+      "citations_count": 1,
+      "citations": [
+        "[c_1]"
+      ],
+      "latency_ms": 3365,
+      "passed": true
+    },
+    {
+      "id": "conv_23",
+      "category": "context_dependent",
+      "question": "What is the fee?",
+      "expected": "₹499 per month",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 0.0%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 1629,
+      "passed": false
+    },
+    {
+      "id": "conv_24",
+      "category": "context_dependent",
+      "question": "Which country?",
+      "expected": "India",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 0.0%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 718,
+      "passed": false
+    },
+    {
+      "id": "conv_25",
+      "category": "ambiguous",
+      "question": "Is it expensive?",
+      "expected": "The documentation states the pricing is ₹499 per month.",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 0.0%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 738,
+      "passed": false
+    },
+    {
+      "id": "conv_26",
+      "category": "ambiguous",
+      "question": "Is it successful?",
+      "expected": "The platform has 25,000 monthly active users and a 92% customer satisfaction score.",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 0.0%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 1679,
+      "passed": false
+    },
+    {
+      "id": "conv_27",
+      "category": "ambiguous",
+      "question": "What is the support software?",
+      "expected": "NovaDesk",
+      "expected_behavior": "answer",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 0.0%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 1578,
+      "passed": false
+    },
+    {
+      "id": "conv_28",
+      "category": "unsupported",
+      "question": "What is Nova Technologies' annual revenue?",
+      "expected": "ABSTAIN: insufficient_evidence",
+      "expected_behavior": "abstain",
+      "actual_answer": "ABSTAIN: insufficient_evidence.\n\nThe provided document context does not contain any information regarding Nova Technologies' annual revenue.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 3709,
+      "passed": true
+    },
+    {
+      "id": "conv_29",
+      "category": "unsupported",
+      "question": "How many full-time employees work at Nova Technologies?",
+      "expected": "ABSTAIN: insufficient_evidence",
+      "expected_behavior": "abstain",
+      "actual_answer": "ABSTAIN: insufficient_evidence. \n\nThe provided document context does not contain any information regarding the number of full-time employees at Nova Technologies.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 2295,
+      "passed": true
+    },
+    {
+      "id": "conv_30",
+      "category": "unsupported",
+      "question": "Who is the Chief Executive Officer of Nova Technologies?",
+      "expected": "ABSTAIN: insufficient_evidence",
+      "expected_behavior": "abstain",
+      "actual_answer": "ABSTAIN: insufficient_evidence. The provided document context does not contain any information about the Chief Executive Officer of Nova Technologies.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 3953,
+      "passed": true
+    },
+    {
+      "id": "conv_31",
+      "category": "unsupported",
+      "question": "Does NovaDesk support dark mode and mobile apps?",
+      "expected": "ABSTAIN: insufficient_evidence",
+      "expected_behavior": "abstain",
+      "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 16.7%, Primary chunks: 0.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 2646,
+      "passed": true
+    },
+    {
+      "id": "conv_32",
+      "category": "conflicting_evidence",
+      "question": "What is the verified monthly pricing of NovaDesk across all policy versions?",
+      "expected": "ABSTAIN: conflicting_evidence (₹499 vs ₹799)",
+      "expected_behavior": "abstain_conflict",
+      "actual_answer": "The verified monthly pricing of NovaDesk is ₹499 per month for the version launched in 2024 [c_0]. There is also a legacy version launched in 2023 with a pricing of ₹799 per month [c_1].",
+      "is_abstention": false,
+      "citations_count": 2,
+      "citations": [
+        "[c_0]",
+        "[c_1]"
+      ],
+      "latency_ms": 2325,
+      "passed": true
+    },
+    {
+      "id": "conv_33",
+      "category": "conflicting_evidence",
+      "question": "What was the official launch year of NovaDesk across contradictory records?",
+      "expected": "ABSTAIN: conflicting_evidence (2024 vs 2023)",
+      "expected_behavior": "abstain_conflict",
+      "actual_answer": "ABSTAIN: insufficient_evidence.\n\nThe provided context contains contradictory information regarding the launch year of NovaDesk. One document states it was launched in 2023 [c_0], [c_3], while another states it was launched in 2024 [c_1], [c_2]. Without additional verified evidence to resolve this discrepancy, a definitive answer cannot be provided.",
+      "is_abstention": true,
+      "citations_count": 0,
+      "citations": [],
+      "latency_ms": 2589,
+      "passed": true
+    }
+  ]
+}

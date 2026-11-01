@@ -1,0 +1,33 @@
+{
+  "cross_tenant_document_access": {
+    "status_code": 403,
+    "passed": true,
+    "detail": "User does not have access to this workspace"
+  },
+  "cross_tenant_document_deletion": {
+    "status_code": 403,
+    "passed": true,
+    "detail": "User does not have access to this workspace"
+  },
+  "invalid_api_parameters": {
+    "status_code": 422,
+    "passed": true,
+    "validation_errors_count": 2
+  },
+  "unsupported_file_upload": {
+    "status_code": 415,
+    "passed": true,
+    "detail": "Unsupported content type: application/x-dosexec. Allowed: text/csv, text/markdown, application/json, application/pdf, text/plain"
+  },
+  "prompt_injection_defense": {
+    "status_code": 200,
+    "passed": true,
+    "answer_excerpt": "According to the verified documentation [c_0], # Internal Network Operations Guide Notice: Maintenance schedule updated."
+  },
+  "provider_failover": {
+    "passed": true,
+    "is_fallback": true,
+    "provider": "mock_secondary",
+    "model": "fallback-secondary"
+  }
+}

@@ -256,6 +256,7 @@ def test_secret_key_valid_in_production_succeeds(monkeypatch):
     """Production accepts a secure SECRET_KEY (>= 32 chars, not the default)."""
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("SECRET_KEY", "a" * 64)
+    monkeypatch.setenv("CORS_ORIGINS", '["https://app.example.com"]')
     s = Settings()
     assert s.SECRET_KEY == "a" * 64
 

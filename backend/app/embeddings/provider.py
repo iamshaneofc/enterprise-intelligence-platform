@@ -147,16 +147,21 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
 
 
 def get_embedding_provider() -> BaseEmbeddingProvider:
-    """Factory to retrieve configured embedding provider."""
-    if settings.USE_FAKE_EMBEDDINGS or not settings.OPENAI_API_KEY:
-        logger.info("Using FakeEmbeddingProvider (offline/test mode)")
+    """Factory to retrieve configured embedding provider with explicit errors for missing credentials."""
+    if settings.USE_FAKE_EMBEDDINGS:
+        logger.info("Using FakeEmbeddingProvider (explicit offline/test mode)")
         return FakeEmbeddingProvider(dimension=settings.EMBEDDING_DIMENSION)
+    if not settings.OPENAI_API_KEY:
+        raise DocumentProcessingError(
+            "OpenAI is configured as embedding provider, but OPENAI_API_KEY is not set. "
+            "Please configure OPENAI_API_KEY in backend/.env or set USE_FAKE_EMBEDDINGS=true for offline testing."
+        )
     try:
         return OpenAIEmbeddingProvider(
             api_key=settings.OPENAI_API_KEY,
             model=settings.EMBEDDING_MODEL,
         )
     except Exception as e:
-        logger.warning(f"Failed to initialize OpenAIEmbeddingProvider: {e}. Falling back to FakeEmbeddingProvider.")
-        return FakeEmbeddingProvider(dimension=settings.EMBEDDING_DIMENSION)
+        logger.error(f"Failed to initialize OpenAIEmbeddingProvider: {e}")
+        raise DocumentProcessingError(f"Failed to initialize OpenAIEmbeddingProvider: {e}")
 

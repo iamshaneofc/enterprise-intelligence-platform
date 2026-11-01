@@ -62,10 +62,10 @@ frontend/dist-ssr/
 
 # Environment variables and secrets
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+*.env
+*.env.*
+*.local
 *.pem
 *.key
 *.cert
@@ -73,8 +73,9 @@ frontend/dist-ssr/
 credentials.json
 client_secret*.json
 
-# Allow example environment file
+# Allow example environment files
 !.env.example
+!*.env.example
 
 # Database & SQLite & vector store data
 *.sqlite3

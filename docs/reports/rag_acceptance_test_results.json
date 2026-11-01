@@ -1,0 +1,187 @@
+[
+  {
+    "num": 1,
+    "question": "What is the product name?",
+    "expected": "NovaDesk",
+    "status_code": 200,
+    "actual_answer": "ABSTAIN: insufficient_evidence. The provided document context does not contain verified facts answering this inquiry.",
+    "is_abstention": true,
+    "citations_count": 0,
+    "citations": [],
+    "latency_ms": 1,
+    "model_used": "fake-claude-3-5-sonnet",
+    "provider_used": "fake_primary",
+    "correct": false
+  },
+  {
+    "num": 2,
+    "question": "Which company developed NovaDesk?",
+    "expected": "Nova Technologies",
+    "status_code": 200,
+    "actual_answer": "According to the verified documentation [c_1], ## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month.",
+    "is_abstention": false,
+    "citations_count": 1,
+    "citations": [
+      {
+        "marker": "[c_1]",
+        "document_id": "f60115e4-c59a-43f2-a4a0-bf7aab72cc80",
+        "document_title": "novadesk_spec",
+        "chunk_id": "51a893fd-9783-4e65-ba39-af85f99e129e",
+        "snippet": "## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month",
+        "score": 0.01613
+      }
+    ],
+    "latency_ms": 1,
+    "model_used": "fake-claude-3-5-sonnet",
+    "provider_used": "fake_primary",
+    "correct": true
+  },
+  {
+    "num": 3,
+    "question": "When was NovaDesk launched?",
+    "expected": "2024",
+    "status_code": 200,
+    "actual_answer": "According to the verified documentation [c_2], ## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month.",
+    "is_abstention": false,
+    "citations_count": 1,
+    "citations": [
+      {
+        "marker": "[c_2]",
+        "document_id": "f60115e4-c59a-43f2-a4a0-bf7aab72cc80",
+        "document_title": "novadesk_spec",
+        "chunk_id": "51a893fd-9783-4e65-ba39-af85f99e129e",
+        "snippet": "## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month",
+        "score": 0.03175
+      }
+    ],
+    "latency_ms": 0,
+    "model_used": "fake-claude-3-5-sonnet",
+    "provider_used": "fake_primary",
+    "correct": true
+  },
+  {
+    "num": 4,
+    "question": "How many monthly active users does it have?",
+    "expected": "25,000",
+    "status_code": 200,
+    "actual_answer": "According to the verified documentation [c_0], ## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month.",
+    "is_abstention": false,
+    "citations_count": 1,
+    "citations": [
+      {
+        "marker": "[c_0]",
+        "document_id": "f60115e4-c59a-43f2-a4a0-bf7aab72cc80",
+        "document_title": "novadesk_spec",
+        "chunk_id": "51a893fd-9783-4e65-ba39-af85f99e129e",
+        "snippet": "## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month",
+        "score": 0.03252
+      }
+    ],
+    "latency_ms": 1,
+    "model_used": "fake-claude-3-5-sonnet",
+    "provider_used": "fake_primary",
+    "correct": true
+  },
+  {
+    "num": 5,
+    "question": "What is its customer satisfaction score?",
+    "expected": "92%",
+    "status_code": 200,
+    "actual_answer": "According to the verified documentation [c_0], ## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month.",
+    "is_abstention": false,
+    "citations_count": 1,
+    "citations": [
+      {
+        "marker": "[c_0]",
+        "document_id": "f60115e4-c59a-43f2-a4a0-bf7aab72cc80",
+        "document_title": "novadesk_spec",
+        "chunk_id": "51a893fd-9783-4e65-ba39-af85f99e129e",
+        "snippet": "## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month",
+        "score": 0.03252
+      }
+    ],
+    "latency_ms": 1,
+    "model_used": "fake-claude-3-5-sonnet",
+    "provider_used": "fake_primary",
+    "correct": true
+  },
+  {
+    "num": 6,
+    "question": "What is its monthly pricing?",
+    "expected": "499",
+    "status_code": 200,
+    "actual_answer": "According to the verified documentation [c_0], ## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month.",
+    "is_abstention": false,
+    "citations_count": 1,
+    "citations": [
+      {
+        "marker": "[c_0]",
+        "document_id": "f60115e4-c59a-43f2-a4a0-bf7aab72cc80",
+        "document_title": "novadesk_spec",
+        "chunk_id": "51a893fd-9783-4e65-ba39-af85f99e129e",
+        "snippet": "## Key Product Metrics - Product: NovaDesk - Company: Nova Technologies - Launch year: 2024 - Monthly active users: 25,000 - Customer satisfaction: 92% - Main market: India - Pricing: ₹499 per month",
+        "score": 0.03227
+      }
+    ],
+    "latency_ms": 0,
+    "model_used": "fake-claude-3-5-sonnet",
+    "provider_used": "fake_primary",
+    "correct": true
+  },
+  {
+    "num": 7,
+    "question": "Which market does it primarily serve?",
+    "expected": "India",
+    "status_code": 200,
+    "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 33.3%, Primary chunks: 0.",
+    "is_abstention": true,
+    "citations_count": 0,
+    "citations": [],
+    "latency_ms": 1,
+    "model_used": "evidence_sufficiency_gate",
+    "provider_used": "system",
+    "correct": false
+  },
+  {
+    "num": 8,
+    "question": "What is the company's annual revenue?",
+    "expected": "ABSTAIN / Insufficient evidence",
+    "status_code": 200,
+    "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 33.3%, Primary chunks: 0.",
+    "is_abstention": true,
+    "citations_count": 0,
+    "citations": [],
+    "latency_ms": 1,
+    "model_used": "evidence_sufficiency_gate",
+    "provider_used": "system",
+    "correct": true
+  },
+  {
+    "num": 9,
+    "question": "How many employees does the company have?",
+    "expected": "ABSTAIN / Insufficient evidence",
+    "status_code": 200,
+    "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 33.3%, Primary chunks: 0.",
+    "is_abstention": true,
+    "citations_count": 0,
+    "citations": [],
+    "latency_ms": 1,
+    "model_used": "evidence_sufficiency_gate",
+    "provider_used": "system",
+    "correct": true
+  },
+  {
+    "num": 10,
+    "question": "What is its CEO's name?",
+    "expected": "ABSTAIN / Insufficient evidence",
+    "status_code": 200,
+    "actual_answer": "ABSTAIN: insufficient_evidence. Retrieved context does not contain sufficient verified facts for query. Query term coverage: 0.0%, Primary chunks: 0.",
+    "is_abstention": true,
+    "citations_count": 0,
+    "citations": [],
+    "latency_ms": 1,
+    "model_used": "evidence_sufficiency_gate",
+    "provider_used": "system",
+    "correct": true
+  }
+]

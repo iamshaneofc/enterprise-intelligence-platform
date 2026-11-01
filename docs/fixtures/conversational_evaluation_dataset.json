@@ -1,0 +1,306 @@
+{
+  "dataset_name": "NovaDesk Advanced Conversational & Grounding Benchmark",
+  "version": "1.0.0",
+  "total_questions": 33,
+  "categories": [
+    "direct_factual",
+    "vague",
+    "paraphrased",
+    "follow_up",
+    "pronoun_based",
+    "multi_hop",
+    "context_dependent",
+    "ambiguous",
+    "unsupported",
+    "conflicting_evidence"
+  ],
+  "questions": [
+    {
+      "id": "conv_01",
+      "category": "direct_factual",
+      "question": "What company developed NovaDesk?",
+      "expected_answer": "Nova Technologies",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_02",
+      "category": "direct_factual",
+      "question": "When was NovaDesk launched?",
+      "expected_answer": "2024",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_03",
+      "category": "direct_factual",
+      "question": "What is the monthly pricing for NovaDesk?",
+      "expected_answer": "₹499 per month",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_04",
+      "category": "vague",
+      "question": "Tell me about NovaDesk.",
+      "expected_answer": "NovaDesk is an engineering intelligence and helpdesk ticketing platform developed by Nova Technologies in 2024.",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_05",
+      "category": "vague",
+      "question": "What are the metrics for NovaDesk?",
+      "expected_answer": "25,000 monthly active users, 92% customer satisfaction, and pricing of ₹499 per month.",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_06",
+      "category": "vague",
+      "question": "How is it doing in the market?",
+      "expected_answer": "It serves India with 25,000 monthly active users and 92% customer satisfaction.",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_07",
+      "category": "paraphrased",
+      "question": "What is the product name?",
+      "expected_answer": "NovaDesk",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_08",
+      "category": "paraphrased",
+      "question": "Which market does it primarily serve?",
+      "expected_answer": "India",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_09",
+      "category": "paraphrased",
+      "question": "Who is the creator of the platform?",
+      "expected_answer": "Nova Technologies",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_10",
+      "category": "paraphrased",
+      "question": "What is the user adoption scale?",
+      "expected_answer": "25,000 monthly active users",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_11",
+      "category": "follow_up",
+      "thread_id": "thread_alpha",
+      "turn": 1,
+      "question": "Tell me about NovaDesk.",
+      "expected_answer": "NovaDesk is an engineering intelligence and helpdesk ticketing platform developed by Nova Technologies.",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_12",
+      "category": "follow_up",
+      "thread_id": "thread_alpha",
+      "turn": 2,
+      "question": "Who developed it?",
+      "expected_answer": "Nova Technologies",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_13",
+      "category": "follow_up",
+      "thread_id": "thread_alpha",
+      "turn": 3,
+      "question": "When was it launched?",
+      "expected_answer": "2024",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_14",
+      "category": "follow_up",
+      "thread_id": "thread_alpha",
+      "turn": 4,
+      "question": "How much does it cost?",
+      "expected_answer": "₹499 per month",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_15",
+      "category": "follow_up",
+      "thread_id": "thread_alpha",
+      "turn": 5,
+      "question": "Is its customer satisfaction high?",
+      "expected_answer": "92%",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_16",
+      "category": "pronoun_based",
+      "thread_id": "thread_beta",
+      "turn": 1,
+      "question": "What is Nova Technologies working on?",
+      "expected_answer": "NovaDesk",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_17",
+      "category": "pronoun_based",
+      "thread_id": "thread_beta",
+      "turn": 2,
+      "question": "Where do they sell it?",
+      "expected_answer": "India",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_18",
+      "category": "pronoun_based",
+      "thread_id": "thread_beta",
+      "turn": 3,
+      "question": "How many people use it every month?",
+      "expected_answer": "25,000",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_19",
+      "category": "multi_hop",
+      "question": "Compare the customer satisfaction rate and monthly active users of NovaDesk.",
+      "expected_answer": "NovaDesk has 25,000 monthly active users and a 92% customer satisfaction score.",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_20",
+      "category": "multi_hop",
+      "question": "What is the annual software cost per user based on its monthly pricing?",
+      "expected_answer": "₹499 per month (₹5,988 annually)",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_21",
+      "category": "multi_hop",
+      "question": "Summarize the commercial details of NovaDesk including company, market, and subscription fee.",
+      "expected_answer": "Nova Technologies, India, ₹499 per month",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_22",
+      "category": "context_dependent",
+      "thread_id": "thread_gamma",
+      "turn": 1,
+      "question": "Tell me about NovaDesk pricing.",
+      "expected_answer": "₹499 per month",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_23",
+      "category": "context_dependent",
+      "thread_id": "thread_gamma",
+      "turn": 2,
+      "question": "What is the fee?",
+      "expected_answer": "₹499 per month",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_24",
+      "category": "context_dependent",
+      "thread_id": "thread_gamma",
+      "turn": 3,
+      "question": "Which country?",
+      "expected_answer": "India",
+      "expected_behavior": "answer",
+      "context_dependency": true
+    },
+    {
+      "id": "conv_25",
+      "category": "ambiguous",
+      "question": "Is it expensive?",
+      "expected_answer": "The documentation states the pricing is ₹499 per month.",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_26",
+      "category": "ambiguous",
+      "question": "Is it successful?",
+      "expected_answer": "The platform has 25,000 monthly active users and a 92% customer satisfaction score.",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_27",
+      "category": "ambiguous",
+      "question": "What is the support software?",
+      "expected_answer": "NovaDesk",
+      "expected_behavior": "answer",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_28",
+      "category": "unsupported",
+      "question": "What is Nova Technologies' annual revenue?",
+      "expected_answer": "ABSTAIN: insufficient_evidence",
+      "expected_behavior": "abstain",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_29",
+      "category": "unsupported",
+      "question": "How many full-time employees work at Nova Technologies?",
+      "expected_answer": "ABSTAIN: insufficient_evidence",
+      "expected_behavior": "abstain",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_30",
+      "category": "unsupported",
+      "question": "Who is the Chief Executive Officer of Nova Technologies?",
+      "expected_answer": "ABSTAIN: insufficient_evidence",
+      "expected_behavior": "abstain",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_31",
+      "category": "unsupported",
+      "question": "Does NovaDesk support dark mode and mobile apps?",
+      "expected_answer": "ABSTAIN: insufficient_evidence",
+      "expected_behavior": "abstain",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_32",
+      "category": "conflicting_evidence",
+      "question": "What is the verified monthly pricing of NovaDesk across all policy versions?",
+      "expected_answer": "ABSTAIN: conflicting_evidence (₹499 vs ₹799)",
+      "expected_behavior": "abstain_conflict",
+      "context_dependency": false
+    },
+    {
+      "id": "conv_33",
+      "category": "conflicting_evidence",
+      "question": "What was the official launch year of NovaDesk across contradictory records?",
+      "expected_answer": "ABSTAIN: conflicting_evidence (2024 vs 2023)",
+      "expected_behavior": "abstain_conflict",
+      "context_dependency": false
+    }
+  ]
+}
+

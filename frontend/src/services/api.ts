@@ -18,13 +18,13 @@
 
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
-if (!rawBaseUrl) {
-  throw new Error(
-    "VITE_API_BASE_URL is not set. Please configure the backend API base URL via the VITE_API_BASE_URL environment variable."
+if (!rawBaseUrl && !import.meta.env.DEV) {
+  console.warn(
+    "VITE_API_BASE_URL is not set. Defaulting to relative origin. In production (e.g. Vercel), set VITE_API_BASE_URL to your backend API URL."
   );
 }
 
-const API_BASE_URL = rawBaseUrl;
+const API_BASE_URL = (rawBaseUrl || "").replace(/\/+$/, "");
 
 export class APIError extends Error {
   status: number;
