@@ -27,6 +27,7 @@ fi
 SECRET_PAYLOAD=$(aws secretsmanager get-secret-value \
     --secret-id "$SECRET_NAME" \
     --region "$AWS_REGION" \
+    --no-cli-pager \
     --query 'SecretString' \
     --output text 2>/dev/null || true)
 
