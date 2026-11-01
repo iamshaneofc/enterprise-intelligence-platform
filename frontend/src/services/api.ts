@@ -1,8 +1,30 @@
 /**
  * Centralized API Client with JWT authorization, error normalization, and 401 interceptors.
+ *
+ * SECURITY NOTE: JWT access tokens are currently stored in localStorage. This exposes tokens
+ * to XSS attacks if any JavaScript injection vulnerability exists in the frontend.
+ *
+ * MIGRATION PATH (requires backend changes, separate phase):
+ * 1. Backend must set HttpOnly, Secure, SameSite=Strict cookies on login/register
+ * 2. Backend must clear cookies on logout
+ * 3. Backend must implement CSRF token validation for state-changing requests
+ * 4. Frontend must remove localStorage token storage and rely on cookie-based auth
+ * 5. Frontend must attach CSRF token to non-GET requests
+ * 6. CORS must be configured with allowCredentials=true and explicit origins (see backend fix)
+ *
+ * Do NOT change token storage to cookies without completing all backend steps above,
+ * or authentication will break.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL !== undefined ? import.meta.env.VITE_API_BASE_URL : "";
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
+
+if (!rawBaseUrl) {
+  throw new Error(
+    "VITE_API_BASE_URL is not set. Please configure the backend API base URL via the VITE_API_BASE_URL environment variable."
+  );
+}
+
+const API_BASE_URL = rawBaseUrl;
 
 export class APIError extends Error {
   status: number;
