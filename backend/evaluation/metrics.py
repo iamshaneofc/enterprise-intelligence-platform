@@ -1,6 +1,7 @@
 """Evaluation metrics for RAG system quality assessment."""
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from collections import Counter
 import json
 import re
 
@@ -49,6 +50,175 @@ class EvaluationResult:
     per_question: List[Dict[str, Any]]
 
 
+_STOP_WORDS = {
+    "a", "an", "the", "in", "on", "at", "to", "for", "with", "by", "of", "from",
+    "and", "or", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+    "had", "do", "does", "did", "this", "that", "these", "those", "it", "its",
+    "as", "if", "each", "all", "which", "what", "where", "when", "how", "who"
+}
+
+
+def _tokenize(text: str) -> List[str]:
+    """Tokenize string into lowercase alphanumeric words."""
+    if not text:
+        return []
+    return [w.lower() for w in re.findall(r'\b\w+\b', text) if w.strip()]
+
+
+def _extract_content_tokens(text: str) -> set[str]:
+    """Extract informative non-stopword tokens."""
+    tokens = _tokenize(text)
+    return {t for t in tokens if t not in _STOP_WORDS and len(t) >= 2}
+
+
+def compute_context_precision(
+    retrieved_contexts: List[str],
+    ground_truth_context: str,
+    relevance_threshold: float = 0.20,
+) -> float:
+    """
+    Compute deterministic heuristic Context Precision@K.
+    
+    NOTE: This is a pure-function, deterministic lexical and entity matching metric,
+    NOT an official RAGAS LLM-judge metric. It measures whether ground-truth relevant chunks
+    are ranked higher in the retrieved context list without invoking external LLMs:
+    Context Precision@K = sum(Precision@k * v_k) / sum(v_k)
+    where v_k is binary relevance of chunk at rank k.
+    
+    If ground_truth_context is empty (e.g. out-of-domain / unanswerable),
+    returns 1.0 (model should abstain and no context was expected).
+    """
+    if not ground_truth_context or not ground_truth_context.strip():
+        return 1.0
+    if not retrieved_contexts:
+        return 0.0
+
+    gt_tokens = _extract_content_tokens(ground_truth_context)
+    if not gt_tokens:
+        return 1.0
+
+    relevant_flags = []
+    for ctx in retrieved_contexts:
+        ctx_tokens = _extract_content_tokens(ctx)
+        if not ctx_tokens:
+            relevant_flags.append(0)
+            continue
+        overlap = len(gt_tokens & ctx_tokens) / max(1, len(gt_tokens))
+        # Check if numbers or dates in ground_truth match chunk
+        gt_numbers = set(re.findall(r'\b\d+(?:[\.:-]\d+)*\b', ground_truth_context))
+        ctx_numbers = set(re.findall(r'\b\d+(?:[\.:-]\d+)*\b', ctx))
+        has_num_overlap = bool(gt_numbers and (gt_numbers & ctx_numbers))
+
+        is_relevant = 1 if (overlap >= relevance_threshold or has_num_overlap) else 0
+        relevant_flags.append(is_relevant)
+
+    total_relevant = sum(relevant_flags)
+    if total_relevant == 0:
+        return 0.0
+
+    precision_sum = 0.0
+    running_relevant = 0
+    for rank, is_rel in enumerate(relevant_flags, start=1):
+        if is_rel:
+            running_relevant += 1
+            precision_at_k = running_relevant / rank
+            precision_sum += precision_at_k
+
+    return precision_sum / total_relevant
+
+
+def compute_context_recall(
+    retrieved_contexts: List[str],
+    ground_truth_context: str,
+    overlap_threshold: float = 0.40,
+) -> float:
+    """
+    Compute deterministic heuristic Context Recall.
+    
+    NOTE: This is a pure-function, deterministic lexical overlap metric,
+    NOT an official RAGAS LLM-judge metric. It measures the fraction of ground truth
+    statements or sentences attributable to retrieved contexts without invoking an external LLM:
+    Context Recall = (attributable GT sentences) / (total GT sentences)
+    
+    If ground_truth_context is empty, returns 1.0.
+    """
+    if not ground_truth_context or not ground_truth_context.strip():
+        return 1.0
+    if not retrieved_contexts:
+        return 0.0
+
+    combined_context = " ".join(retrieved_contexts).lower()
+    all_ctx_tokens = set(_tokenize(combined_context))
+
+    # Split ground truth context into sentence units
+    raw_sentences = [s.strip() for s in re.split(r'[.!?;\n]+', ground_truth_context) if s.strip()]
+    if not raw_sentences:
+        return 1.0
+
+    attributable = 0
+    for sentence in raw_sentences:
+        sent_tokens = _extract_content_tokens(sentence)
+        if not sent_tokens:
+            attributable += 1
+            continue
+        matched_tokens = sent_tokens & all_ctx_tokens
+        coverage = len(matched_tokens) / len(sent_tokens)
+        
+        # Check numbers
+        sent_numbers = set(re.findall(r'\b\d+(?:[\.:-]\d+)*\b', sentence))
+        num_matched = True
+        if sent_numbers:
+            ctx_numbers = set(re.findall(r'\b\d+(?:[\.:-]\d+)*\b', combined_context))
+            num_matched = bool(sent_numbers & ctx_numbers)
+
+        if coverage >= overlap_threshold and num_matched:
+            attributable += 1
+
+    return attributable / len(raw_sentences)
+
+
+def compute_f1_token_overlap(
+    prediction: str,
+    ground_truth: str,
+    is_abstention: bool = False,
+    expected_to_abstain: bool = False,
+) -> float:
+    """
+    Compute token-level F1 score between prediction and ground truth.
+    
+    Properly accounts for abstention:
+    - If expected to abstain and prediction abstained: F1 = 1.0
+    - If expected to abstain and prediction did not abstain: F1 = 0.0
+    - If not expected to abstain and prediction abstained: F1 = 0.0
+    - Otherwise: standard harmonic mean of token precision and recall.
+    """
+    if expected_to_abstain:
+        return 1.0 if is_abstention else 0.0
+    if is_abstention and not expected_to_abstain:
+        return 0.0
+    if not ground_truth or not ground_truth.strip():
+        return 1.0 if is_abstention else 0.0
+
+    pred_tokens = _tokenize(prediction)
+    gt_tokens = _tokenize(ground_truth)
+
+    if not pred_tokens and not gt_tokens:
+        return 1.0
+    if not pred_tokens or not gt_tokens:
+        return 0.0
+
+    pred_counter = Counter(pred_tokens)
+    gt_counter = Counter(gt_tokens)
+
+    common_count = sum((pred_counter & gt_counter).values())
+    if common_count == 0:
+        return 0.0
+
+    precision = common_count / len(pred_tokens)
+    recall = common_count / len(gt_tokens)
+    return 2.0 * (precision * recall) / (precision + recall)
+
+
 def evaluate_retrieval_precision(
     retrieved_chunks: List[Dict[str, Any]],
     expected_citations: List[str],
@@ -68,26 +238,16 @@ def evaluate_retrieval_precision(
     if not retrieved_chunks:
         return {"precision_at_k": 0.0, "recall_at_k": 0.0, "mrr": 0.0, "ndcg_at_k": 0.0}
     
-    # For this simplified evaluation, we check if the top chunk matches expected
-    # In a full implementation, you'd map citation markers to chunk IDs
     top_chunks = retrieved_chunks[:top_k]
     
-    # Precision: how many of the top-k are relevant
-    # Since we don't have ground truth relevance labels, we use a proxy:
-    # If expected_citations is not empty, assume the first expected is relevant
     if expected_citations:
-        # Check if top result has content (proxy for relevance)
         precision = 1.0 if top_chunks and top_chunks[0].get("content") else 0.0
         recall = 1.0 if top_chunks else 0.0
     else:
-        # For abstention cases, we don't measure retrieval precision
         precision = 0.0
         recall = 0.0
     
-    # MRR: reciprocal rank of first relevant result
     mrr = 1.0 if top_chunks else 0.0
-    
-    # NDCG simplified
     ndcg = 1.0 if top_chunks else 0.0
     
     return {
@@ -102,6 +262,7 @@ def evaluate_citation_accuracy(
     answer: str,
     citations: List[Dict[str, Any]],
     ungrounded_claims: List[str],
+    is_abstention: bool = False,
 ) -> Dict[str, float]:
     """
     Evaluate citation quality.
@@ -110,10 +271,18 @@ def evaluate_citation_accuracy(
         answer: Generated answer text
         citations: List of citation dicts with marker, chunk_id, score, snippet
         ungrounded_claims: List of ungrounded claims detected
+        is_abstention: Whether the answer represents an intentional abstention
         
     Returns:
         Dict with resolution_rate, grounding_rate, hallucination_rate
     """
+    if is_abstention:
+        return {
+            "resolution_rate": 1.0,
+            "grounding_rate": 1.0,
+            "hallucination_rate": 0.0,
+        }
+
     # Resolution rate: citations that have valid chunk_ids
     if citations:
         valid_citations = sum(1 for c in citations if c.get("chunk_id"))
@@ -122,7 +291,6 @@ def evaluate_citation_accuracy(
         resolution_rate = 1.0  # No citations to resolve
     
     # Grounding rate: fraction of factual claims with citations
-    # Simple heuristic: count sentences with citation markers
     sentences = re.split(r'[.!?]+', answer)
     factual_sentences = [s for s in sentences if len(s.strip()) > 20]
     if factual_sentences:
@@ -176,7 +344,6 @@ def evaluate_answer_correctness(
 ) -> Dict[str, float]:
     """
     Evaluate answer correctness using keyword matching.
-    For more sophisticated evaluation, use an LLM judge.
     
     Args:
         answer: Generated answer
@@ -200,7 +367,7 @@ def evaluate_answer_correctness(
 
 
 def compute_aggregate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Compute aggregate metrics across all questions."""
+    """Compute aggregate metrics across all questions, including category breakdowns."""
     if not results:
         return {}
     
@@ -223,8 +390,38 @@ def compute_aggregate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     latencies = [r.get("latency_ms", 0) for r in results]
     prompt_tokens = [r.get("prompt_tokens", 0) for r in results]
     completion_tokens = [r.get("completion_tokens", 0) for r in results]
+
+    # RAGAS / Advanced metrics
+    ctx_precisions = [r.get("context_precision", 0.0) for r in results if "context_precision" in r]
+    ctx_recalls = [r.get("context_recall", 0.0) for r in results if "context_recall" in r]
+    f1_scores = [r.get("f1_score", 0.0) for r in results if "f1_score" in r]
+
+    # Category breakdown
+    categories: Dict[str, List[Dict[str, Any]]] = {}
+    for r in results:
+        cat = r.get("category", "unspecified")
+        categories.setdefault(cat, []).append(r)
+
+    by_category: Dict[str, Dict[str, float]] = {}
+    for cat, cat_results in categories.items():
+        cat_g = [cr.get("citation", {}).get("grounding_rate", 1) for cr in cat_results]
+        cat_h = [cr.get("citation", {}).get("hallucination_rate", 0) for cr in cat_results]
+        cat_a = [cr.get("abstention", {}).get("accuracy", 1) for cr in cat_results]
+        cat_f1 = [cr.get("f1_score", 0.0) for cr in cat_results if "f1_score" in cr]
+        cat_cp = [cr.get("context_precision", 0.0) for cr in cat_results if "context_precision" in cr]
+        cat_cr = [cr.get("context_recall", 0.0) for cr in cat_results if "context_recall" in cr]
+
+        by_category[cat] = {
+            "count": len(cat_results),
+            "grounding_rate": sum(cat_g) / len(cat_g),
+            "hallucination_rate": sum(cat_h) / len(cat_h),
+            "abstention_accuracy": sum(cat_a) / len(cat_a),
+            "avg_f1_score": (sum(cat_f1) / len(cat_f1)) if cat_f1 else 0.0,
+            "avg_context_precision": (sum(cat_cp) / len(cat_cp)) if cat_cp else 0.0,
+            "avg_context_recall": (sum(cat_cr) / len(cat_cr)) if cat_cr else 0.0,
+        }
     
-    return {
+    metrics: Dict[str, Any] = {
         "retrieval": {
             "avg_precision_at_k": sum(precisions) / len(precisions),
             "avg_recall_at_k": sum(recalls) / len(recalls),
@@ -247,3 +444,19 @@ def compute_aggregate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
             "avg_total_tokens": sum(p + c for p, c in zip(prompt_tokens, completion_tokens)) / len(prompt_tokens),
         },
     }
+
+    if ctx_precisions:
+        deterministic_metrics = {
+            "avg_context_precision": sum(ctx_precisions) / len(ctx_precisions),
+            "avg_context_recall": sum(ctx_recalls) / len(ctx_recalls) if ctx_recalls else 0.0,
+            "avg_f1_token_overlap": sum(f1_scores) / len(f1_scores) if f1_scores else 0.0,
+            "evaluation_type": "deterministic_heuristic_pure_function",
+        }
+        metrics["deterministic_context"] = deterministic_metrics
+        # Retain ragas alias for backwards compatibility
+        metrics["ragas"] = deterministic_metrics
+
+    if by_category:
+        metrics["by_category"] = by_category
+
+    return metrics

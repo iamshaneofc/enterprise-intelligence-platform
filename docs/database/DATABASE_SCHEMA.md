@@ -10,29 +10,189 @@
 ---
 
 ## Table of Contents
-1. [Schema Overview & Engine Requirements](#1-schema-overview--engine-requirements)
-2. [Physical ERD Reference](#2-physical-erd-reference)
-3. [Table-by-Table Schema Specifications](#3-table-by-table-schema-specifications)
-   - [3.1 Identity & Access Management Tables](#31-identity--access-management-tables)
-   - [3.2 Document Management & Versioning Tables](#32-document-management--versioning-tables)
-   - [3.3 Document Processing & Pipeline Tables](#33-document-processing--pipeline-tables)
-   - [3.4 Knowledge & Vector Engine Tables](#34-knowledge--vector-engine-tables)
-   - [3.5 Retrieval & RAG Tracing Tables](#35-retrieval--rag-tracing-tables)
-   - [3.6 Conversational AI & Citation Tables](#36-conversational-ai--citation-tables)
-   - [3.7 Autonomous Agent Execution Tables](#37-autonomous-agent-execution-tables)
-   - [3.8 LLM Usage & Cost Telemetry Tables](#38-llm-usage--cost-telemetry-tables)
-   - [3.9 Evaluation Framework Tables](#39-evaluation-framework-tables)
-   - [3.10 System Activity & Audit Tables](#310-system-activity--audit-tables)
-4. [Vector Storage & pgvector Indexing Design](#4-vector-storage--pgvector-indexing-design)
-5. [Hybrid Full-Text Search Indexing (BM25 Equivalent)](#5-hybrid-full-text-search-indexing-bm25-equivalent)
-6. [Data Integrity, Foreign Keys & Cascading Rules](#6-data-integrity-foreign-keys--cascading-rules)
-7. [Query Patterns & Index Justification Matrix](#7-query-patterns--index-justification-matrix)
-8. [Data Lifecycle, Retention & Cleanup Procedures](#8-data-lifecycle-retention--cleanup-procedures)
-9. [Row-Level Security (RLS) Policy Specifications](#9-row-level-security-rls-policy-specifications)
+1. [Active Production Schema & Alembic Migration Guide (Current Working State)](#1-active-production-schema--alembic-migration-guide)
+   - [1.1 Active Tables Specification](#11-active-tables-specification)
+   - [1.2 Entity Relationships & Diagram](#12-entity-relationships--diagram)
+   - [1.3 Multi-Tenant Workspace Isolation](#13-multi-tenant-workspace-isolation)
+   - [1.4 Document & Chunk Integrity](#14-document--chunk-integrity)
+   - [1.5 Conversations, Messages & Citation Linkages](#15-conversations-messages--citation-linkages)
+   - [1.6 LLM Usage & Cost Telemetry (`llm_logs`)](#16-llm-usage--cost-telemetry-llm_logs)
+   - [1.7 Evaluation Benchmark Records](#17-evaluation-benchmark-records)
+   - [1.8 Alembic Migration Workflow & CLI Reference](#18-alembic-migration-workflow--cli-reference)
+2. [Target Enterprise Schema Specification](#2-target-enterprise-schema-specification)
+3. [Physical ERD Reference](#3-physical-erd-reference)
+4. [Table-by-Table Schema Specifications (Enterprise Blueprint)](#4-table-by-table-schema-specifications)
+5. [Vector Storage & pgvector Indexing Design](#5-vector-storage--pgvector-indexing-design)
+6. [Hybrid Full-Text Search Indexing (BM25 Equivalent)](#6-hybrid-full-text-search-indexing-bm25-equivalent)
+7. [Data Integrity, Foreign Keys & Cascading Rules](#7-data-integrity-foreign-keys--cascading-rules)
+8. [Query Patterns & Index Justification Matrix](#8-query-patterns--index-justification-matrix)
+9. [Data Lifecycle, Retention & Cleanup Procedures](#9-data-lifecycle-retention--cleanup-procedures)
+10. [Row-Level Security (RLS) Policy Specifications](#10-row-level-security-rls-policy-specifications)
 
 ---
 
-## 1. Schema Overview & Engine Requirements
+## 1. Active Production Schema & Alembic Migration Guide
+
+This section documents the **actual active database schema** currently implemented, tested, and migrated across the Engineering Intelligence Platform codebase.
+
+### 1.1 Active Tables Specification
+
+The active database model is composed of **11 normalized tables** defined in Python via SQLModel / SQLAlchemy (`backend/app/models/`) and version-controlled via Alembic:
+
+| Table Name | Model Class | Primary Key | Foreign Keys & Cascades | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| `users` | `User` | `id` (VARCHAR 36) | None | System user identities, bcrypt passwords, and global roles (`admin`, `engineer`, `viewer`). |
+| `workspaces` | `Workspace` | `id` (VARCHAR 36) | `owner_id` -> `users(id)` ON DELETE CASCADE | Multi-tenant tenant boundary; isolates all knowledge, sessions, and telemetry. |
+| `workspace_members`| `WorkspaceMember`| `id` (VARCHAR 36) | `workspace_id` -> `workspaces(id)` ON DELETE CASCADE<br/>`user_id` -> `users(id)` ON DELETE CASCADE | Role-based membership linking users to workspaces (`admin`, `member`, `viewer`). |
+| `documents` | `Document` | `id` (VARCHAR 36) | `workspace_id` -> `workspaces(id)` ON DELETE CASCADE<br/>`created_by` -> `users(id)` ON DELETE SET NULL | Master document catalog with SHA-256 hash, lifecycle status, and JSON metadata. |
+| `chunks` | `Chunk` | `id` (VARCHAR 36) | `document_id` -> `documents(id)` ON DELETE CASCADE<br/>`workspace_id` -> `workspaces(id)` ON DELETE CASCADE | Semantic text chunks with 1536-dimensional vector embeddings (`pgvector`). |
+| `conversations` | `Conversation` | `id` (VARCHAR 36) | `workspace_id` -> `workspaces(id)` ON DELETE CASCADE<br/>`user_id` -> `users(id)` ON DELETE CASCADE | Multi-turn conversational investigation sessions with sliding summaries. |
+| `messages` | `Message` | `id` (VARCHAR 36) | `conversation_id` -> `conversations(id)` ON DELETE CASCADE | Turn-by-turn chat history (`user`, `assistant`, `system`) with token estimates. |
+| `citations` | `Citation` | `id` (VARCHAR 36) | `message_id` -> `messages(id)` ON DELETE CASCADE<br/>`chunk_id` -> `chunks(id)` ON DELETE CASCADE | Precise passage citations (`[c_0]`) linking assistant messages to chunks and docs. |
+| `agent_runs` | `AgentRun` | `id` (VARCHAR 36) | `workspace_id` -> `workspaces(id)` ON DELETE CASCADE<br/>`user_id` -> `users(id)` ON DELETE CASCADE<br/>`conversation_id` -> `conversations(id)` ON DELETE SET NULL | Autonomous agent investigation executions with task plan and final markdown report. |
+| `agent_tool_executions`| `AgentToolExecution`| `id` (VARCHAR 36)| `agent_run_id` -> `agent_runs(id)` ON DELETE CASCADE | Step-by-step tool execution audit trail (Search, Analyze, Report) with inputs/outputs. |
+| `llm_logs` | `LLMLog` | `id` (VARCHAR 36) | None (Indexes on `workspace_id`, `user_id`, `session_id`) | Financial, token, and performance telemetry for every completed LLM generation. |
+
+---
+
+### 1.2 Entity Relationships & Diagram
+
+The physical entity relationships enforce strict referential integrity and tenant boundaries:
+
+```mermaid
+erDiagram
+    USERS ||--o{ WORKSPACES : "owns"
+    USERS ||--o{ WORKSPACE_MEMBERS : "member_of"
+    USERS ||--o{ DOCUMENTS : "creates"
+    USERS ||--o{ CONVERSATIONS : "initiates"
+    USERS ||--o{ AGENT_RUNS : "triggers"
+    USERS ||--o{ LLM_LOGS : "accrues_usage"
+
+    WORKSPACES ||--o{ WORKSPACE_MEMBERS : "contains"
+    WORKSPACES ||--o{ DOCUMENTS : "isolates"
+    WORKSPACES ||--o{ CHUNKS : "scopes"
+    WORKSPACES ||--o{ CONVERSATIONS : "houses"
+    WORKSPACES ||--o{ AGENT_RUNS : "executes"
+    WORKSPACES ||--o{ LLM_LOGS : "bills_to"
+
+    DOCUMENTS ||--o{ CHUNKS : "chunked_into"
+    DOCUMENTS ||--o{ CITATIONS : "referenced_in"
+
+    CONVERSATIONS ||--o{ MESSAGES : "contains"
+    CONVERSATIONS ||--o{ AGENT_RUNS : "links_to"
+
+    MESSAGES ||--o{ CITATIONS : "cites"
+    CHUNKS ||--o{ CITATIONS : "evidence_for"
+
+    AGENT_RUNS ||--o{ AGENT_TOOL_EXECUTIONS : "executes_steps"
+```
+
+---
+
+### 1.3 Multi-Tenant Workspace Isolation
+
+Multi-tenancy is enforced at both the database and application levels:
+1. **Foreign Key Scoping:** Every data record (`documents`, `chunks`, `conversations`, `agent_runs`, `llm_logs`) includes an indexed `workspace_id` column.
+2. **Access Control Verification:** The API dependency `verify_workspace_access(workspace_id, current_user, db)` in [`backend/app/api/dependencies.py`](file:///z:/enterprise-intelligence-platform/backend/app/api/dependencies.py) checks that the requesting user is either the workspace owner or has an active membership record in `workspace_members`.
+3. **Query Boundary Enforcement:** All SQL queries (relational lookups, BM25 searches, and `pgvector` cosine similarity searches) include explicit `workspace_id = :workspace_id` WHERE clauses. A user from Workspace A cannot retrieve or vector-match documents from Workspace B.
+
+---
+
+### 1.4 Document & Chunk Integrity
+
+1. **Cryptographic Deduplication:** Before storing a file, `DocumentService` computes its SHA-256 hash. If `file_hash` already exists in `documents` for the same `workspace_id`, the upload is rejected or linked to avoid duplicate chunking and token waste.
+2. **Parent-Child Cascading:** `chunks.document_id` references `documents.id` with `ON DELETE CASCADE`. When an engineering document is deleted, all extracted chunks and associated vector embeddings are atomically purged.
+3. **Vector Type Support:** The `chunks.embedding` column uses a custom SQLAlchemy `VectorType(1536)` in [`backend/app/db/types.py`](file:///z:/enterprise-intelligence-platform/backend/app/db/types.py). On PostgreSQL, it maps directly to `pgvector` with HNSW indexing; on SQLite (used for local fast unit testing), it serializes to JSON text.
+
+---
+
+### 1.5 Conversations, Messages & Citation Linkages
+
+1. **Hierarchical Cascading:** Deleting a `conversation` automatically deletes all its child `messages` and all associated `citations`.
+2. **Citation Markers:** When the RAG engine generates an answer, inline citation markers (e.g. `[c_0]`, `[c_1]`) are resolved into `citations` rows:
+   - `message_id`: Assistant message containing the assertion.
+   - `chunk_id`: The exact chunk in `chunks` supporting the assertion.
+   - `document_id`: The source document.
+   - `score`: Dense/sparse hybrid relevance score.
+   - `snippet`: Verbatim chunk excerpt for click-to-verify side drawers.
+
+---
+
+### 1.6 LLM Usage & Cost Telemetry (`llm_logs`)
+
+The `llm_logs` table provides complete operational auditability for all generative calls:
+
+| Column Name | SQL Type | Description |
+| :--- | :--- | :--- |
+| `id` | VARCHAR(36) PK | Unique log event identifier (UUID). |
+| `workspace_id` | VARCHAR(36) INDEX | Workspace tenant responsible for token cost. |
+| `user_id` | VARCHAR(36) INDEX | User initiating the generation. |
+| `session_id` | VARCHAR(36) INDEX | Associated conversation ID (added in revision `58f1a23b49de`). |
+| `provider` | VARCHAR(50) | Provider name (`anthropic`, `openai`, `fake`). |
+| `model` | VARCHAR(100) | Specific model invoked (`claude-3-5-sonnet-20241022`, `gpt-4o`). |
+| `prompt_tokens` | INTEGER | Prompt input token count. |
+| `completion_tokens` | INTEGER | Generated response token count. |
+| `total_tokens` | INTEGER | Sum of prompt and completion tokens. |
+| `cached_prompt_tokens` | INTEGER | Prompt tokens served from cache (added in revision `58f1a23b49de`). |
+| `latency_ms` | INTEGER | Wall-clock request latency in milliseconds. |
+| `cost_usd` | FLOAT | Calculated cost in USD based on provider model pricing. |
+| `is_fallback` | BOOLEAN | True if the circuit breaker fell back to secondary provider. |
+| `status` | VARCHAR(50) | Execution outcome (`success` or `error`). |
+| `error_type` | VARCHAR(100) | Error category if failed (e.g. `RateLimitError`). |
+| `created_at` | DATETIME | Timestamp of invocation. |
+
+> [!IMPORTANT]
+> **Single-Entry Accounting Principle:** The router logs exactly 1 record per completed user request with `is_fallback=True` if failover occurred. It does not insert multiple billing rows for retried attempts, preventing artificial cost inflation.
+
+---
+
+### 1.7 Evaluation Benchmark Records
+
+Evaluation records operate across two integrated layers:
+1. **Golden Benchmark Dataset:** Maintained at [`backend/tests/fixtures/golden_evaluation_dataset.jsonl`](file:///z:/enterprise-intelligence-platform/backend/tests/fixtures/golden_evaluation_dataset.jsonl), containing 46 curated engineering questions spanning 7 technical categories.
+2. **Evaluation Execution & Telemetry:** Executed by `backend.evaluation.runner` and exposed via API endpoints (`POST /api/v1/workspaces/{workspace_id}/evaluation/run` and `GET /results`). Computes deterministic heuristic context precision, recall, grounding rates, and offline hallucination rates.
+
+---
+
+### 1.8 Alembic Migration Workflow & CLI Reference
+
+All schema modifications are tracked through Alembic revisions in `backend/alembic/versions/`.
+
+#### Active Revision History Graph:
+```
+47e95deb65dd (initial_migration: 10 base tables + pgvector check)
+      │
+      ▼
+260ef031ac96 (add_pgvector_extension_and_index: HNSW cosine index on chunks.embedding)
+      │
+      ▼
+58f1a23b49de (head: add_llm_log_telemetry_columns - session_id, cached_prompt_tokens, error_type)
+```
+
+#### Step-by-Step CLI Commands:
+
+1. **Inspect Migration Status & Head:**
+   ```bash
+   python -m alembic -c backend/alembic.ini current
+   python -m alembic -c backend/alembic.ini heads
+   ```
+
+2. **Upgrade Database to Head Revision:**
+   ```bash
+   python -m alembic -c backend/alembic.ini upgrade head
+   ```
+
+3. **Roll Back Previous Migration:**
+   ```bash
+   python -m alembic -c backend/alembic.ini downgrade -1
+   ```
+
+4. **Generate New Migration Revision:**
+   ```bash
+   python -m alembic -c backend/alembic.ini revision --autogenerate -m "add_new_feature_table"
+   ```
+
+---
 
 The **Engineering Intelligence Platform** physical schema is designed for **PostgreSQL 16** with the **`pgvector`** extension. It unifies relational ACID consistency, immutable document snapshots, high-dimensional vector search, and full-text lexical indexing in a single, highly normalized database cluster.
 

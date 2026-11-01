@@ -1,303 +1,171 @@
 erDiagram
     %% =========================================================================
-    %% COMPLETE PHYSICAL ENTITY RELATIONSHIP DIAGRAM (ERD)
+    %% ACTIVE DATABASE ENTITY RELATIONSHIP DIAGRAM (ERD)
+    %% Engineering Intelligence Platform — 11 Active Tables
     %% =========================================================================
 
-    WORKSPACES ||--o{ USERS : "contains"
-    WORKSPACES ||--o{ DOCUMENTS : "owns"
-    WORKSPACES ||--o{ CONVERSATIONS : "houses"
-    WORKSPACES ||--o{ LLM_USAGE_LOGS : "accrues"
-    WORKSPACES ||--o{ AUDIT_LOGS : "records"
-
-    USERS ||--o{ DOCUMENTS : "uploads"
+    USERS ||--o{ WORKSPACES : "owns"
+    USERS ||--o{ WORKSPACE_MEMBERS : "member_of"
+    USERS ||--o{ DOCUMENTS : "creates"
     USERS ||--o{ CONVERSATIONS : "initiates"
-    USERS ||--o{ AGENT_RUNS : "executes"
-    USERS ||--o{ LLM_USAGE_LOGS : "triggers"
+    USERS ||--o{ AGENT_RUNS : "triggers"
+    USERS ||--o{ LLM_LOGS : "accrues_usage"
 
-    DOCUMENTS ||--o{ DOCUMENT_VERSIONS : "versions"
-    DOCUMENT_VERSIONS ||--o{ PROCESSING_JOBS : "processed_by"
-    DOCUMENT_VERSIONS ||--o{ DOCUMENT_CHUNKS : "segmented_into"
-    DOCUMENT_CHUNKS ||--|| CHUNK_EMBEDDINGS : "vectorized_as"
+    WORKSPACES ||--o{ WORKSPACE_MEMBERS : "contains"
+    WORKSPACES ||--o{ DOCUMENTS : "isolates"
+    WORKSPACES ||--o{ CHUNKS : "scopes"
+    WORKSPACES ||--o{ CONVERSATIONS : "houses"
+    WORKSPACES ||--o{ AGENT_RUNS : "executes"
+    WORKSPACES ||--o{ LLM_LOGS : "bills_to"
+
+    DOCUMENTS ||--o{ CHUNKS : "chunked_into"
+    DOCUMENTS ||--o{ CITATIONS : "referenced_in"
 
     CONVERSATIONS ||--o{ MESSAGES : "contains"
-    CONVERSATIONS ||--o{ RETRIEVAL_EXECUTIONS : "traces"
-    CONVERSATIONS ||--o{ AGENT_RUNS : "hosts"
+    CONVERSATIONS ||--o{ AGENT_RUNS : "links_to"
 
-    MESSAGES ||--o{ MESSAGE_CITATIONS : "cites"
-    DOCUMENT_CHUNKS ||--o{ MESSAGE_CITATIONS : "grounded_in"
+    MESSAGES ||--o{ CITATIONS : "cites"
+    CHUNKS ||--o{ CITATIONS : "evidence_for"
 
-    RETRIEVAL_EXECUTIONS ||--o{ RETRIEVAL_CANDIDATES : "ranks"
-    DOCUMENT_CHUNKS ||--o{ RETRIEVAL_CANDIDATES : "candidate_chunk"
+    AGENT_RUNS ||--o{ AGENT_TOOL_EXECUTIONS : "executes_steps"
 
-    AGENT_RUNS ||--o{ AGENT_TOOL_EXECUTIONS : "performs_steps"
-
-    EVALUATION_DATASETS ||--o{ EVALUATION_QUESTIONS : "defines_questions"
-    EVALUATION_DATASETS ||--o{ EVALUATION_RUNS : "benchmarked_by"
-    EVALUATION_RUNS ||--o{ EVALUATION_RESULTS : "produces_scores"
-    EVALUATION_QUESTIONS ||--o{ EVALUATION_RESULTS : "measured_in"
-
-    %% Entity Definitions with Types and Keys
-
-    WORKSPACES {
-        uuid id PK "Primary Key"
-        varchar name "Workspace Name"
-        varchar slug UK "Unique URL Identifier"
-        timestamptz created_at "Creation Timestamp"
-    }
+    %% =========================================================================
+    %% ENTITY DEFINITIONS & SCHEMAS
+    %% =========================================================================
 
     USERS {
-        uuid id PK "Primary Key"
-        uuid workspace_id FK "Workspace Tenant Reference"
-        varchar email UK "Unique Email Address"
-        varchar hashed_password "Bcrypt Password Hash"
-        varchar full_name "User Full Name"
-        varchar role "Role (admin, engineer, viewer)"
-        boolean is_active "Account Active Status"
-        timestamptz created_at "Creation Timestamp"
-        timestamptz updated_at "Update Timestamp"
+        string id PK "UUID (String 36)"
+        string email UK "Unique Email (String 255)"
+        string hashed_password "Bcrypt Hash (String 255)"
+        string full_name "Full Name (String 255)"
+        string role "admin | engineer | viewer (String 50)"
+        boolean is_active "Active Account Status"
+        datetime created_at "Creation Timestamp"
+        datetime updated_at "Update Timestamp"
+    }
+
+    WORKSPACES {
+        string id PK "UUID (String 36)"
+        string name "Workspace Name (String 255)"
+        string slug UK "Unique Slug (String 255)"
+        string description "Optional Workspace Description"
+        string owner_id FK "References users.id ON DELETE CASCADE"
+        datetime created_at "Creation Timestamp"
+        datetime updated_at "Update Timestamp"
+    }
+
+    WORKSPACE_MEMBERS {
+        string id PK "UUID (String 36)"
+        string workspace_id FK "References workspaces.id ON DELETE CASCADE"
+        string user_id FK "References users.id ON DELETE CASCADE"
+        string role "admin | member | viewer (String 50)"
+        datetime created_at "Join Timestamp"
     }
 
     DOCUMENTS {
-        uuid id PK "Primary Key"
-        uuid workspace_id FK "Workspace Tenant Reference"
-        uuid uploaded_by FK "Uploader User Reference"
-        varchar title "Display Title"
-        varchar filename "Original File Name"
-        varchar file_type "File Format (pdf, txt, md, csv)"
-        boolean is_private "Privacy Flag for Hybrid Access"
-        uuid owner_id FK "Owner User Reference"
-        uuid current_version_id FK "Active Document Version"
-        varchar content_hash "SHA-256 Checksum"
-        varchar status "Status (PENDING, PROCESSING, INDEXED, FAILED)"
-        jsonb metadata "Project, subsystem, environment tags"
-        boolean is_deleted "Soft Delete Flag"
-        timestamptz created_at "Upload Timestamp"
-        timestamptz updated_at "Update Timestamp"
+        string id PK "UUID (String 36)"
+        string workspace_id FK "References workspaces.id ON DELETE CASCADE"
+        string title "Document Title (String 255)"
+        string filename "Original File Name (String 255)"
+        string file_path "Stored Disk Path (String 512)"
+        integer file_size_bytes "File Size in Bytes"
+        string file_type "pdf | txt | md | csv (String 50)"
+        string file_hash "SHA-256 Checksum (String 64)"
+        string status "PENDING | PROCESSING | INDEXED | FAILED"
+        integer chunk_count "Total Chunks Extracted"
+        text error_message "Ingestion Error If Failed"
+        json doc_metadata "Document JSON Metadata"
+        string created_by FK "References users.id ON DELETE SET NULL"
+        datetime created_at "Creation Timestamp"
+        datetime updated_at "Update Timestamp"
     }
 
-    DOCUMENT_VERSIONS {
-        uuid id PK "Primary Key"
-        uuid document_id FK "Parent Document Reference"
-        integer version_number "Monotonic Version Counter"
-        integer file_size_bytes "Size in Bytes"
-        varchar storage_path "S3 Key or Local Path"
-        varchar content_hash "Version SHA-256"
-        text extraction_summary "Extracted Text Summary"
-        jsonb metadata "Version Structural Metadata"
-        uuid created_by FK "Creator User Reference"
-        timestamptz created_at "Version Creation Timestamp"
-    }
-
-    PROCESSING_JOBS {
-        uuid id PK "Primary Key"
-        uuid document_id FK "Document Reference"
-        uuid document_version_id FK "Document Version Reference"
-        varchar status "Status (PENDING, PROCESSING, COMPLETED, FAILED)"
-        varchar stage "Stage (EXTRACTION, CHUNKING, EMBEDDING)"
-        integer attempts "Retry Attempt Count"
-        integer max_attempts "Maximum Allowed Attempts (3)"
-        text error_message "Error Message on Failure"
-        text error_traceback "Full Exception Stack Trace"
-        varchar lock_token "Redis Lock Token"
-        timestamptz started_at "Execution Start Timestamp"
-        timestamptz completed_at "Execution End Timestamp"
-        timestamptz created_at "Queue Dispatch Timestamp"
-    }
-
-    DOCUMENT_CHUNKS {
-        uuid id PK "Primary Key"
-        uuid document_version_id FK "Document Version Reference"
-        uuid document_id FK "Document Reference"
-        uuid workspace_id FK "Workspace Reference"
+    CHUNKS {
+        string id PK "UUID (String 36)"
+        string document_id FK "References documents.id ON DELETE CASCADE"
+        string workspace_id FK "References workspaces.id ON DELETE CASCADE"
         integer chunk_index "Sequential Chunk Index"
-        text content "Raw Chunk Text Segment"
-        integer token_count "Token Count in Chunk"
-        integer page_number "Page Number for Citations"
-        varchar section_heading "Section Title"
-        jsonb metadata "Heading Hierarchy & Line Offsets"
-        tsvector tsv_content "Generated Column for BM25"
-        timestamptz created_at "Chunk Creation Timestamp"
-    }
-
-    CHUNK_EMBEDDINGS {
-        uuid id PK "Primary Key"
-        uuid chunk_id FK "Associated Document Chunk"
-        varchar embedding_model "Model (text-embedding-3-small)"
-        integer dimensions "Embedding Dimensions (1536)"
-        vector embedding "HNSW 1536d Cosine Vector"
-        timestamptz created_at "Vector Creation Timestamp"
+        text content "Chunk Text Payload"
+        json chunk_metadata "Token Count, Source Page/Heading"
+        vector embedding "1536-dimensional Vector (pgvector)"
+        datetime created_at "Creation Timestamp"
     }
 
     CONVERSATIONS {
-        uuid id PK "Primary Key"
-        uuid workspace_id FK "Workspace Tenant Reference"
-        uuid user_id FK "Conversation Creator"
-        varchar title "Session Conversation Title"
-        text context_summary "Incremental Semantic Summary"
-        boolean is_archived "Archived Flag"
-        timestamptz created_at "Session Creation Timestamp"
-        timestamptz updated_at "Last Activity Timestamp"
+        string id PK "UUID (String 36)"
+        string workspace_id FK "References workspaces.id ON DELETE CASCADE"
+        string user_id FK "References users.id ON DELETE CASCADE"
+        string title "Conversation Title (String 255)"
+        text summary "Conversational Sliding Summary"
+        json conv_metadata "Metadata / Config Options"
+        datetime created_at "Creation Timestamp"
+        datetime updated_at "Update Timestamp"
     }
 
     MESSAGES {
-        uuid id PK "Primary Key"
-        uuid conversation_id FK "Parent Conversation Reference"
-        varchar sender_type "Sender (USER, ASSISTANT, SYSTEM)"
-        text content "Message Text Body"
-        varchar model_used "Model Identifier"
-        uuid retrieval_execution_id FK "Trace Reference"
-        timestamptz created_at "Message Timestamp"
+        string id PK "UUID (String 36)"
+        string conversation_id FK "References conversations.id ON DELETE CASCADE"
+        string role "user | assistant | system (String 50)"
+        text content "Message Content Markdown"
+        integer token_count "Estimated Token Count"
+        json msg_metadata "Citations & Model Info JSON"
+        datetime created_at "Creation Timestamp"
     }
 
-    MESSAGE_CITATIONS {
-        uuid id PK "Primary Key"
-        uuid message_id FK "Parent Message Reference"
-        uuid chunk_id FK "Cited Chunk Reference"
-        uuid document_version_id FK "Document Version Reference"
-        numeric relevance_score "Similarity or Rerank Score"
-        varchar citation_marker "Marker ([1], [Doc 104, Chunk 3])"
-        text cited_text_snippet "Exact Quoted Excerpt"
-        timestamptz created_at "Citation Timestamp"
-    }
-
-    RETRIEVAL_EXECUTIONS {
-        uuid id PK "Primary Key"
-        uuid conversation_id FK "Associated Conversation"
-        uuid message_id FK "Associated Message"
-        text raw_query "Original User Query"
-        text rewritten_query "De-contextualized Query"
-        jsonb filters_applied "Metadata Filters Used"
-        integer dense_candidates_count "Dense Vector Count"
-        integer sparse_candidates_count "BM25 Keyword Count"
-        integer fused_candidates_count "RRF Fused Count"
-        integer reranked_candidates_count "Top Reranked Count"
-        varchar reranker_model "Reranker Model Identifier"
-        integer execution_duration_ms "Latency in Milliseconds"
-        timestamptz created_at "Execution Timestamp"
-    }
-
-    RETRIEVAL_CANDIDATES {
-        uuid id PK "Primary Key"
-        uuid retrieval_execution_id FK "Parent Retrieval Trace"
-        uuid chunk_id FK "Candidate Chunk Reference"
-        integer dense_rank "Dense Search Rank"
-        numeric dense_score "Dense Cosine Similarity"
-        integer sparse_rank "BM25 FullText Rank"
-        numeric sparse_score "BM25 Score"
-        numeric rrf_score "Fused Reciprocal Rank Score"
-        numeric rerank_score "Cross-Encoder Score"
-        boolean is_selected_for_context "Injected into Context"
+    CITATIONS {
+        string id PK "UUID (String 36)"
+        string message_id FK "References messages.id ON DELETE CASCADE"
+        string chunk_id FK "References chunks.id ON DELETE CASCADE"
+        string document_id "Referenced Document UUID (String 36)"
+        string citation_marker "Marker e.g. [c_0], [c_1] (String 20)"
+        float score "Relevance / Similarity Score"
+        text snippet "Verbatim Snippet Excerpt"
+        datetime created_at "Creation Timestamp"
     }
 
     AGENT_RUNS {
-        uuid id PK "Primary Key"
-        uuid conversation_id FK "Associated Conversation"
-        uuid user_id FK "User Reference"
-        text goal "User Investigation Goal"
-        varchar status "Status (RUNNING, COMPLETED, FAILED)"
-        integer total_steps "Executed Steps Count"
-        integer max_steps "Cap on Steps (Max 5)"
-        integer duration_ms "Total Runtime Latency"
-        text final_response "Final Synthesized Answer"
-        text error_message "Failure Message if Any"
-        timestamptz created_at "Run Start Timestamp"
-        timestamptz completed_at "Run Completion Timestamp"
+        string id PK "UUID (String 36)"
+        string workspace_id FK "References workspaces.id ON DELETE CASCADE"
+        string user_id FK "References users.id ON DELETE CASCADE"
+        string conversation_id FK "References conversations.id ON DELETE SET NULL"
+        text task "User Investigation Prompt"
+        string status "running | completed | failed (String 50)"
+        json plan "Multi-Step Execution Plan"
+        text final_output "Final Markdown Report"
+        integer total_steps "Total Tool Steps Taken"
+        integer execution_time_ms "Total Execution Duration"
+        datetime created_at "Start Timestamp"
+        datetime completed_at "End Timestamp"
     }
 
     AGENT_TOOL_EXECUTIONS {
-        uuid id PK "Primary Key"
-        uuid agent_run_id FK "Parent Agent Run Reference"
-        integer step_number "Step Sequence (1 to 5)"
-        varchar tool_name "Tool (Search, Analysis, Report)"
-        jsonb input_arguments "Validated Pydantic Input"
-        jsonb output_result "Tool Execution Result"
-        varchar status "Status (SUCCESS, ERROR, TIMEOUT)"
-        integer duration_ms "Tool Execution Latency"
-        text error_message "Error Trace if Failed"
-        timestamptz created_at "Tool Call Timestamp"
+        string id PK "UUID (String 36)"
+        string agent_run_id FK "References agent_runs.id ON DELETE CASCADE"
+        integer step_number "Step Sequence Number"
+        string tool_name "Tool Identifier (String 100)"
+        json tool_input "Validated Tool Parameters JSON"
+        json tool_output "Structured Output JSON"
+        string status "success | failure (String 50)"
+        integer execution_time_ms "Step Duration in Milliseconds"
+        text error_message "Failure Message If Failed"
+        datetime created_at "Step Timestamp"
     }
 
-    LLM_USAGE_LOGS {
-        uuid id PK "Primary Key"
-        uuid workspace_id FK "Workspace Reference"
-        uuid user_id FK "User Reference"
-        uuid conversation_id FK "Conversation Reference"
-        varchar provider "Provider (anthropic, openai)"
-        varchar model "Model Identifier"
-        varchar call_type "Type (rag, agent, rewrite, embed)"
+    LLM_LOGS {
+        string id PK "UUID (String 36)"
+        string workspace_id "Tenant Workspace UUID (String 36)"
+        string user_id "User UUID (String 36)"
+        string session_id "Conversation Session UUID (String 36)"
+        string provider "anthropic | openai | fake (String 50)"
+        string model "claude-3-5-sonnet | gpt-4o (String 100)"
         integer prompt_tokens "Input Token Count"
-        integer completion_tokens "Output Token Count"
-        integer total_tokens "Total Token Count"
-        numeric estimated_cost_usd "Calculated Cost in USD"
-        integer latency_ms "API Call Latency"
-        boolean fallback_occurred "Circuit Breaker Tripped"
-        text fallback_reason "Reason for Failover"
-        timestamptz created_at "API Call Timestamp"
-    }
-
-    EVALUATION_DATASETS {
-        uuid id PK "Primary Key"
-        varchar name "Dataset Name"
-        text description "Dataset Purpose"
-        varchar version "Version Tag"
-        boolean is_active "Active Dataset Flag"
-        timestamptz created_at "Creation Timestamp"
-    }
-
-    EVALUATION_QUESTIONS {
-        uuid id PK "Primary Key"
-        uuid dataset_id FK "Parent Dataset Reference"
-        text question_text "Benchmark Question Prompt"
-        text expected_answer "Ground Truth Answer"
-        jsonb reference_document_ids "Ground Truth Document IDs"
-        varchar category "FACTUAL, SYNTHESIS, CONTRADICTION, NEGATIVE"
-        timestamptz created_at "Creation Timestamp"
-    }
-
-    EVALUATION_RUNS {
-        uuid id PK "Primary Key"
-        uuid dataset_id FK "Target Benchmark Dataset"
-        varchar run_name "Run Identifier"
-        varchar llm_provider "Tested Provider"
-        varchar llm_model "Tested Model"
-        varchar retrieval_strategy "Retrieval Configuration"
-        varchar status "Status (RUNNING, COMPLETED, FAILED)"
-        integer total_questions "Count of Questions Evaluated"
-        numeric faithfulness_score "RAGAS Faithfulness"
-        numeric context_precision "RAGAS Context Precision"
-        numeric context_recall "RAGAS Context Recall"
-        numeric answer_relevance "RAGAS Answer Relevance"
-        numeric hallucination_rate "Calculated Hallucination Rate"
-        numeric negative_rejection_accuracy "Negative Refusal Accuracy"
-        integer avg_latency_ms "Average Query Latency"
-        numeric total_cost_usd "Total Run Cost in USD"
-        timestamptz created_at "Run Start Timestamp"
-        timestamptz completed_at "Run Completion Timestamp"
-    }
-
-    EVALUATION_RESULTS {
-        uuid id PK "Primary Key"
-        uuid evaluation_run_id FK "Parent Evaluation Run"
-        uuid question_id FK "Evaluated Question Reference"
-        text generated_answer "AI Generated Response"
-        jsonb retrieved_chunk_ids "Retrieved Context Chunk IDs"
-        numeric faithfulness "Question Faithfulness Score"
-        numeric context_precision "Context Precision Score"
-        numeric answer_relevance "Answer Relevance Score"
-        integer latency_ms "Query Latency in Milliseconds"
-        boolean pass_fail "Benchmark Pass/Fail Status"
-        text failure_reason "Failure Explanation"
-        timestamptz created_at "Result Timestamp"
-    }
-
-    AUDIT_LOGS {
-        uuid id PK "Primary Key"
-        uuid workspace_id FK "Workspace Reference"
-        uuid user_id FK "Actor User Reference"
-        varchar action "Action Name"
-        varchar resource_type "Target Resource Type"
-        varchar resource_id "Target Resource ID"
-        jsonb details "Contextual Event Payload"
-        varchar ip_address "Client IP Address"
-        timestamptz created_at "Event Timestamp"
+        integer completion_tokens "Generated Output Token Count"
+        integer total_tokens "Total Billed Tokens"
+        integer cached_prompt_tokens "Cached Prompt Token Count"
+        integer latency_ms "Total Call Latency in Milliseconds"
+        float cost_usd "Calculated Financial Cost in USD"
+        boolean is_fallback "True If Secondary Fallback Provider Used"
+        string status "success | error (String 50)"
+        string error_type "Error Category (e.g. RateLimitError)"
+        datetime created_at "Invocation Timestamp"
     }

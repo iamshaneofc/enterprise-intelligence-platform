@@ -1,10 +1,15 @@
-import { EvaluationBenchmarkQuestion } from "@/types";
+import { request } from "./api";
+import {
+  EvaluationBenchmarkQuestion,
+  LiveEvaluationResponse,
+} from "@/types";
 
 /**
  * Evaluation Service Adapter.
+ * Integrates live on-demand batch evaluation against backend endpoints:
+ * - POST /api/v1/workspaces/{workspace_id}/evaluation/run
+ * - GET  /api/v1/workspaces/{workspace_id}/evaluation/results
  * Provides the verified 20-question golden benchmark dataset derived from backend/tests/fixtures/golden_evaluation_dataset.jsonl.
- * Note: Dedicated live /api/v1/evaluation API endpoints are scheduled for Backend Phase 2.
- * Fabricated metrics have been removed to preserve reporting integrity.
  */
 
 export const GOLDEN_BENCHMARK_QUESTIONS: EvaluationBenchmarkQuestion[] = [
@@ -50,8 +55,40 @@ export const evaluationService = {
       dataset_size: dataset.length,
       grounded_questions: dataset.length - abstentions,
       abstention_questions: abstentions,
-      backend_endpoint_available: false,
-      endpoint_status_message: "Live on-demand batch evaluation API scheduled for Backend Phase 2",
+      backend_endpoint_available: true,
+      endpoint_status_message: "Live evaluation runner active at POST /api/v1/workspaces/{workspace_id}/evaluation/run",
     };
+  },
+
+  async runEvaluation(
+    workspaceId: string,
+    options: {
+      top_k?: number;
+      use_fake_llm?: boolean;
+      use_fake_embeddings?: boolean;
+      dataset_path?: string;
+    } = {}
+  ): Promise<LiveEvaluationResponse> {
+    return request<LiveEvaluationResponse>(
+      `/api/v1/workspaces/${workspaceId}/evaluation/run`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          top_k: options.top_k ?? 5,
+          use_fake_llm: options.use_fake_llm ?? true,
+          use_fake_embeddings: options.use_fake_embeddings ?? true,
+          dataset_path: options.dataset_path,
+        }),
+      }
+    );
+  },
+
+  async getLatestResults(workspaceId: string): Promise<LiveEvaluationResponse> {
+    return request<LiveEvaluationResponse>(
+      `/api/v1/workspaces/${workspaceId}/evaluation/results`,
+      {
+        method: "GET",
+      }
+    );
   },
 };

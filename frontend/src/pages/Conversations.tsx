@@ -15,6 +15,8 @@ import {
   Clock,
   Sparkles,
   Calendar,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 export const Conversations: React.FC = () => {
@@ -24,6 +26,7 @@ export const Conversations: React.FC = () => {
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [convToDelete, setConvToDelete] = useState<ConversationItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -31,11 +34,13 @@ export const Conversations: React.FC = () => {
   const loadConversations = async () => {
     if (!currentWorkspace) return;
     setIsLoading(true);
+    setError(null);
     try {
       const data = await conversationService.listConversations(currentWorkspace.id);
       setConversations(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load conversations:", err);
+      setError(err?.message || "Failed to load conversations from backend");
     } finally {
       setIsLoading(false);
     }
@@ -96,6 +101,23 @@ export const Conversations: React.FC = () => {
       {/* Conversations Grid */}
       {isLoading ? (
         <div className="p-12 text-center text-xs text-slate-400">Loading conversations...</div>
+      ) : error ? (
+        <Card className="border-red-200 bg-red-50/50">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-red-900">Unable to load conversations</p>
+            <p className="text-xs text-red-600 mt-1 max-w-md mx-auto">{error}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+              onClick={loadConversations}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">

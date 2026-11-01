@@ -24,6 +24,9 @@ from backend.evaluation.metrics import (
     evaluate_citation_accuracy,
     evaluate_abstention_accuracy,
     evaluate_answer_correctness,
+    compute_context_precision,
+    compute_context_recall,
+    compute_f1_token_overlap,
     compute_aggregate_metrics,
 )
 
@@ -60,6 +63,14 @@ class QuestionResult:
     abstention: Dict[str, float]
     answer_correctness: Dict[str, float]
 
+    # Deterministic context evaluation metrics (heuristic-based, non-LLM judge)
+    category: str = "general"
+    ground_truth: str = ""
+    ground_truth_context: str = ""
+    context_precision: float = 0.0
+    context_recall: float = 0.0
+    f1_score: float = 0.0
+
 
 class EvaluationRunner:
     """Runs evaluation on the golden dataset."""
@@ -70,9 +81,11 @@ class EvaluationRunner:
     
     def setup_test_data(self, db: Session) -> tuple[User, Workspace]:
         """Create test user, workspace, and ingest test documents."""
-        # Create user
+        import uuid
+        # Create user with unique email
+        unique_id = uuid.uuid4().hex[:8]
         user = User(
-            email="eval@enterprise.io",
+            email=f"eval_{unique_id}@enterprise.io",
             hashed_password="eval_hash",
             full_name="Evaluation User",
             role="engineer",
@@ -112,9 +125,6 @@ class EvaluationRunner:
             if file_path.exists():
                 with open(file_path, "rb") as f:
                     content = f.read()
-                
-                rag_service.search  # Ensure service is imported
-                doc = rag_service.search  # Access to trigger service init
                 
                 from backend.app.services.document_service import document_service
                 document_service.upload_and_process(
@@ -160,6 +170,10 @@ class EvaluationRunner:
                 print(f"  Evaluating {q['id']}: {q['question'][:60]}...")
                 result = self.run_question(q, workspace.id, user.id, db)
                 self.results.append(result)
+                # Print per-question metrics
+                print(f"    Grounding: {result.citation['grounding_rate']:.2f}, "
+                      f"Hallucination: {result.citation['hallucination_rate']:.2f}, "
+                      f"Ungrounded: {result.ungrounded_claims}")
             
             # Compute aggregate metrics
             aggregate = compute_aggregate_metrics([
@@ -170,6 +184,10 @@ class EvaluationRunner:
                     "latency_ms": r.latency_ms,
                     "prompt_tokens": r.prompt_tokens,
                     "completion_tokens": r.completion_tokens,
+                    "category": r.category,
+                    "context_precision": r.context_precision,
+                    "context_recall": r.context_recall,
+                    "f1_score": r.f1_score,
                 }
                 for r in self.results
             ])
@@ -237,8 +255,9 @@ class EvaluationRunner:
         
         citation_metrics = evaluate_citation_accuracy(
             answer=rag_result.answer,
-            citations=[asdict(c) for c in rag_result.citations],
+            citations=[c.model_dump() for c in rag_result.citations],
             ungrounded_claims=rag_result.ungrounded_claims,
+            is_abstention=rag_result.is_abstention,
         )
         
         abstention_metrics = evaluate_abstention_accuracy(
@@ -252,13 +271,30 @@ class EvaluationRunner:
             answer=rag_result.answer,
             expected_keywords=None,
         )
+
+        # Deterministic context evaluation metrics (heuristic-based, non-LLM judge)
+        retrieved_contexts = [r.content for r in search_result.results]
+        ctx_precision = compute_context_precision(
+            retrieved_contexts=retrieved_contexts,
+            ground_truth_context=question.get("ground_truth_context", ""),
+        )
+        ctx_recall = compute_context_recall(
+            retrieved_contexts=retrieved_contexts,
+            ground_truth_context=question.get("ground_truth_context", ""),
+        )
+        f1_token_score = compute_f1_token_overlap(
+            prediction=rag_result.answer,
+            ground_truth=question.get("ground_truth", ""),
+            is_abstention=rag_result.is_abstention,
+            expected_to_abstain=question.get("expected_to_abstain", False),
+        )
         
         return QuestionResult(
             question_id=question["id"],
             question=question["question"],
             answer=rag_result.answer,
             is_abstention=rag_result.is_abstention,
-            citations=[asdict(c) for c in rag_result.citations],
+            citations=[c.model_dump() for c in rag_result.citations],
             ungrounded_claims=rag_result.ungrounded_claims,
             retrieval_results=[
                 {
@@ -273,14 +309,20 @@ class EvaluationRunner:
                 for r in search_result.results
             ],
             latency_ms=latency_ms,
-            prompt_tokens=rag_result.citations[0].__dict__.get("prompt_tokens", 0) if rag_result.citations else 0,
-            completion_tokens=0,  # Not directly available from ChatResponse
+            prompt_tokens=0,  # Not directly available from ChatResponse
+            completion_tokens=0,
             expected_to_abstain=question.get("expected_to_abstain", False),
             expected_citations=question.get("expected_citations", []),
             retrieval=retrieval_metrics,
             citation=citation_metrics,
             abstention=abstention_metrics,
             answer_correctness=answer_correctness,
+            category=question.get("category", "general"),
+            ground_truth=question.get("ground_truth", ""),
+            ground_truth_context=question.get("ground_truth_context", ""),
+            context_precision=ctx_precision,
+            context_recall=ctx_recall,
+            f1_score=f1_token_score,
         )
 
 
@@ -323,7 +365,6 @@ def run_evaluation(
 
 
 if __name__ == "__main__":
-    # Allow running as script
     import argparse
     parser = argparse.ArgumentParser(description="Run RAG evaluation")
     parser.add_argument("--dataset", default="backend/tests/fixtures/golden_evaluation_dataset.jsonl")
@@ -344,5 +385,15 @@ if __name__ == "__main__":
     print("\n=== AGGREGATE METRICS ===")
     for category, metrics in result["aggregate_metrics"].items():
         print(f"\n{category.upper()}:")
-        for k, v in metrics.items():
-            print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
+        if isinstance(metrics, dict):
+            for k, v in metrics.items():
+                if isinstance(v, dict):
+                    print(f"  {k}:")
+                    for sub_k, sub_v in v.items():
+                        print(f"    {sub_k}: {sub_v:.4f}" if isinstance(sub_v, float) else f"    {sub_k}: {sub_v}")
+                elif isinstance(v, float):
+                    print(f"  {k}: {v:.4f}")
+                else:
+                    print(f"  {k}: {v}")
+        else:
+            print(f"  {metrics}")

@@ -20,6 +20,11 @@ describe("Evaluation Service & Benchmark Dataset", () => {
     expect(stats.dataset_size).toBe(20);
     expect(stats.grounded_questions).toBe(15);
     expect(stats.abstention_questions).toBe(5);
-    expect(stats.backend_endpoint_available).toBe(false);
+    expect(stats.backend_endpoint_available).toBe(true);
+  });
+
+  it("exposes live evaluation runner and results methods", () => {
+    expect(typeof evaluationService.runEvaluation).toBe("function");
+    expect(typeof evaluationService.getLatestResults).toBe("function");
   });
 });

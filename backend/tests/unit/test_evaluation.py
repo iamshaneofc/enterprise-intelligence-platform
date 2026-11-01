@@ -10,6 +10,9 @@ from backend.evaluation.metrics import (
     evaluate_citation_accuracy,
     evaluate_abstention_accuracy,
     evaluate_answer_correctness,
+    compute_context_precision,
+    compute_context_recall,
+    compute_f1_token_overlap,
     compute_aggregate_metrics,
 )
 from backend.evaluation.runner import EvaluationConfig, QuestionResult, run_evaluation
@@ -94,6 +97,54 @@ def test_evaluate_answer_correctness():
     # No expected keywords
     metrics = evaluate_answer_correctness("Any answer", None)
     assert metrics["keyword_coverage"] == 1.0
+
+
+def test_compute_context_precision():
+    """Test context precision computation."""
+    contexts = [
+        "On 2026-03-15 at 14:22 UTC, the PostgreSQL connection pool exhausted all 200 available connections.",
+        "Envoy gateway latency runbook and circuit breaking configuration.",
+    ]
+    gt_context = "On 2026-03-15 at 14:22 UTC, the PostgreSQL connection pool exhausted all 200 available connections."
+    
+    # Chunk 1 is relevant (rank 1), chunk 2 is not
+    prec = compute_context_precision(contexts, gt_context)
+    assert prec == 1.0
+
+    # Empty GT context returns 1.0 (abstention scenario)
+    assert compute_context_precision(contexts, "") == 1.0
+    # Empty contexts return 0.0
+    assert compute_context_precision([], gt_context) == 0.0
+
+
+def test_compute_context_recall():
+    """Test context recall computation."""
+    contexts = [
+        "On 2026-03-15 at 14:22 UTC, the PostgreSQL connection pool exhausted all 200 available connections.",
+    ]
+    gt_context = "On 2026-03-15 at 14:22 UTC, the PostgreSQL connection pool exhausted all 200 available connections."
+    recall = compute_context_recall(contexts, gt_context)
+    assert recall == 1.0
+
+    # Irrelevant context
+    recall_irrel = compute_context_recall(["Completely unrelated text about gardening."], gt_context)
+    assert recall_irrel == 0.0
+
+
+def test_compute_f1_token_overlap():
+    """Test token F1 score computation."""
+    pred = "The PostgreSQL connection pool exhausted 200 connections."
+    gt = "The PostgreSQL connection pool exhausted 200 connections."
+    assert compute_f1_token_overlap(pred, gt) == 1.0
+
+    # Partial overlap
+    pred_partial = "The PostgreSQL connection pool had issues."
+    f1 = compute_f1_token_overlap(pred_partial, gt)
+    assert 0.0 < f1 < 1.0
+
+    # Abstention cases
+    assert compute_f1_token_overlap("ABSTAIN: insufficient_evidence", "", is_abstention=True, expected_to_abstain=True) == 1.0
+    assert compute_f1_token_overlap("Real answer", "", is_abstention=False, expected_to_abstain=True) == 0.0
 
 
 def test_compute_aggregate_metrics():

@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Final Runtime Image
@@ -32,7 +32,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # Copy application source code
-COPY . /app/backend
+COPY backend /app/backend
 
 # Create non-root system user and storage folder
 RUN useradd -m -u 1000 appuser && \

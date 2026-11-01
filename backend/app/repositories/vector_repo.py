@@ -46,18 +46,19 @@ class VectorRepository:
             try:
                 # Native PostgreSQL pgvector cosine distance: 1 - (embedding <=> query)
                 # Select all chunk fields to avoid N+1 queries
+                # Cast the query vector to vector type for pgvector
                 query_str = """
                     SELECT c.id, c.document_id, c.workspace_id, c.chunk_index, 
                            c.content, c.chunk_metadata, c.embedding, c.created_at,
-                           1 - (c.embedding <=> :query_vec::vector) AS score
+                           1 - (c.embedding <=> CAST(:query_vec AS vector)) AS score
                     FROM chunks c
                     WHERE c.workspace_id = :workspace_id
                 """
-                params = {"query_vec": str(query_vector), "workspace_id": workspace_id, "top_k": top_k}
+                params = {"query_vec": query_vector, "workspace_id": workspace_id, "top_k": top_k}
                 if document_id:
                     query_str += " AND c.document_id = :document_id"
                     params["document_id"] = document_id
-                query_str += " ORDER BY c.embedding <=> :query_vec::vector ASC LIMIT :top_k"
+                query_str += " ORDER BY c.embedding <=> CAST(:query_vec AS vector) ASC LIMIT :top_k"
                 
                 rows = db.execute(text(query_str), params).fetchall()
                 results = []

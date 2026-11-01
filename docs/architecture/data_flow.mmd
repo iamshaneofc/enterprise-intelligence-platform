@@ -5,110 +5,94 @@ sequenceDiagram
     %% =========================================================================
 
     actor Engineer as Engineering User
-    participant WebClient as React 18 SPA
-    participant Gateway as FastAPI Ingress
+    participant WebClient as React 18 SPA (Vite)
+    participant Gateway as FastAPI Ingress (/api/v1)
     participant DocSvc as Document Service
-    participant TaskQueue as Redis 7 Queue
-    participant Worker as Background Worker
-    participant Extractor as PyMuPDF / Parsers
+    participant Extractor as PyMuPDF / Text Parsers
+    participant Chunker as Recursive Chunker
     participant RAGSvc as RAG Orchestrator
-    participant Retrieval as Hybrid Retrieval (RRF)
-    participant VectorDB as PostgreSQL (pgvector)
-    participant RelationalDB as PostgreSQL (Relational)
-    participant ObjectStore as S3 / Doc Storage
-    participant Router as LLM Router & Fallback
-    participant AIProvider as External LLM (Claude / OpenAI)
+    participant Gate as Evidence Sufficiency Gate
+    participant Retrieval as Hybrid Retrieval (Dense + BM25)
+    participant DB as PostgreSQL 16 (pgvector + Relational)
+    participant LocalStorage as Local Storage (storage/documents/)
+    participant Router as LLM Router & Circuit Breaker
+    participant Verifier as Grounding Verifier
+    participant Telemetry as Usage Telemetry & Langfuse
 
     %% -------------------------------------------------------------------------
-    %% FLOW 1: ASYNCHRONOUS DOCUMENT INGESTION & VECTOR INDEXING
+    %% FLOW 1: DOCUMENT INGESTION & VECTOR INDEXING PIPELINE
     %% -------------------------------------------------------------------------
     rect rgb(240, 249, 255)
-        Note over Engineer, ObjectStore: FLOW 1: ASYNCHRONOUS DOCUMENT INGESTION & INDEXING PIPELINE
+        Note over Engineer, LocalStorage: FLOW 1: DOCUMENT INGESTION & VECTOR INDEXING PIPELINE
         Engineer->>WebClient: Upload technical document (PDF, TXT, MD, CSV)
-        WebClient->>Gateway: POST /api/v1/documents (Multipart File + Metadata)
-        Gateway->>Gateway: Validate MIME type, magic bytes, and size (<25MB)
+        WebClient->>Gateway: POST /api/v1/workspaces/{ws_id}/documents/upload (Multipart)
+        Gateway->>Gateway: Validate file extension & size limit (<= 20MB)
         Gateway->>DocSvc: Process Ingestion Request
-        DocSvc->>DocSvc: Compute SHA-256 Content Hash
-        DocSvc->>RelationalDB: Check for duplicate hash (workspace_id, content_hash)
+        DocSvc->>DocSvc: Compute SHA-256 Checksum
+        DocSvc->>DB: Check for duplicate hash in workspace
         alt Duplicate Detected
-            DocSvc-->>Gateway: Reject duplicate or return existing doc reference
-            Gateway-->>WebClient: 409 Conflict / Existing Document Info
+            DB-->>DocSvc: Existing document found
+            DocSvc-->>Gateway: HTTP 409 Conflict / Existing Document Info
+            Gateway-->>WebClient: Duplicate document warning
         else Unique File
-            DocSvc->>ObjectStore: Persist raw document file
-            DocSvc->>RelationalDB: Insert document record (Status: 'PENDING')
-            DocSvc->>TaskQueue: Enqueue ingestion job (doc_id, content_hash)
-            DocSvc-->>Gateway: Ingestion Job Accepted
-            Gateway-->>WebClient: 202 Accepted (doc_id, status: 'PENDING')
+            DocSvc->>LocalStorage: Persist raw document file (storage/documents/{doc_id}/)
+            DocSvc->>DB: Insert document record (status='PENDING')
+            DocSvc-->>Gateway: Ingestion Task Accepted
+            Gateway-->>WebClient: HTTP 202 Accepted (DocumentResponse, status='PENDING')
             
-            TaskQueue->>Worker: Dequeue ingestion job (Acquire Redis lock)
-            Worker->>RelationalDB: Update document status -> 'PROCESSING'
-            Worker->>ObjectStore: Stream file bytes
-            Worker->>Extractor: Extract text, headings, and structural metadata
-            Extractor-->>Worker: Clean normalized text stream
-            Worker->>Worker: Chunk text (Recursive 512-1024 tokens, 15% overlap)
-            Worker->>Router: Request batch embeddings (OpenAI text-embedding-3-small)
-            Router->>AIProvider: Embedding API call (1536d vectors)
-            AIProvider-->>Router: Vector embeddings array
-            Router-->>Worker: Embeddings response
-            Worker->>VectorDB: Insert chunks + vector embeddings (pgvector HNSW)
-            Worker->>RelationalDB: Insert full-text search tsvector + chunk metadata
-            Worker->>RelationalDB: Update document status -> 'INDEXED'
-            Worker->>TaskQueue: Release Redis lock
+            Note over DocSvc, DB: Asynchronous Background Processing
+            DocSvc->>DB: Update document status -> 'PROCESSING'
+            DocSvc->>Extractor: Extract text and structural metadata (fitz / text)
+            Extractor-->>DocSvc: Clean normalized text string
+            DocSvc->>Chunker: Split into chunks (~512 tokens, 10% overlap)
+            Chunker-->>DocSvc: List of text chunks with chunk_index and metadata
+            DocSvc->>Router: Batch generate 1536-dim embeddings
+            Router-->>DocSvc: Vector embeddings list
+            DocSvc->>DB: Batch upsert into `chunks` (document_id, chunk_index, content, embedding)
+            DocSvc->>DB: Update document status -> 'INDEXED' (chunk_count=N)
+            WebClient->>Gateway: Poll GET /api/v1/workspaces/{ws_id}/documents/{id}
+            Gateway-->>WebClient: status='INDEXED' -> UI updates to ready state
         end
     end
 
     %% -------------------------------------------------------------------------
-    %% FLOW 2: EVIDENCE-BASED GROUNDED RAG PIPELINE
+    %% FLOW 2: EVIDENCE-GROUNDED RAG & INVESTIGATION QUERY PIPELINE
     %% -------------------------------------------------------------------------
-    rect rgb(254, 242, 242)
-        Note over Engineer, AIProvider: FLOW 2: EVIDENCE-BASED QUESTION ANSWERING & RAG PIPELINE
-        Engineer->>WebClient: Submit query ("Why did database connection fail in Incident 104?")
-        WebClient->>Gateway: POST /api/v1/chat/query (session_id, query, filters)
-        Gateway->>Gateway: Validate JWT auth token & apply rate limiting
-        Gateway->>RAGSvc: Orchestrate Grounded RAG Query
-        RAGSvc->>RelationalDB: Retrieve conversation turn history & summary
-        RelationalDB-->>RAGSvc: Active session window (last K turns)
-        RAGSvc->>RAGSvc: Query Rewriter (De-contextualize & resolve pronouns)
+    rect rgb(245, 255, 245)
+        Note over Engineer, Telemetry: FLOW 2: EVIDENCE-GROUNDED RAG QUERY PIPELINE
+        Engineer->>WebClient: Submit question ("What caused Incident 104?")
+        WebClient->>Gateway: POST /api/v1/workspaces/{ws_id}/chat (query, conversation_id)
+        Gateway->>RAGSvc: Orchestrate RAG answer generation
+        RAGSvc->>DB: Retrieve prior conversation turns (sliding window)
+        DB-->>RAGSvc: Prior conversation context
+        RAGSvc->>Retrieval: Retrieve candidates (query, top_k=5, mode='hybrid')
+        Retrieval->>DB: Dense cosine vector search (pgvector)
+        Retrieval->>DB: Sparse BM25 lexical token match
+        DB-->>Retrieval: Combined candidate chunks
+        Retrieval->>Retrieval: Reciprocal Rank Fusion (RRF k=60)
+        Retrieval-->>RAGSvc: Top ranked chunks
         
-        par Parallel Retrieval Stages
-            RAGSvc->>Router: Generate query embedding vector (1536d)
-            Router->>AIProvider: text-embedding-3-small
-            AIProvider-->>Router: Query vector
-            Router-->>RAGSvc: Query embedding
-            RAGSvc->>Retrieval: Dense vector similarity search (pgvector cosine)
-            Retrieval->>VectorDB: SELECT top_k by cosine distance
-            VectorDB-->>Retrieval: Vector search candidate chunks
-        and Lexical Search
-            RAGSvc->>Retrieval: Sparse full-text keyword search (BM25 / GIN tsvector)
-            Retrieval->>RelationalDB: SELECT top_k by text match rank
-            RelationalDB-->>Retrieval: Keyword search candidate chunks
-        end
-
-        Retrieval->>Retrieval: Reciprocal Rank Fusion (RRF) candidate merging
-        Retrieval->>Retrieval: Cross-Encoder Reranking (Semantic relevance scoring)
-        Retrieval-->>RAGSvc: Top filtered & verified context chunks
-        
-        alt No Chunks Above Confidence Threshold (<0.65)
-            RAGSvc-->>Gateway: Return graceful "Insufficient evidence in documents"
-            Gateway-->>WebClient: Honest negative answer (No hallucinations)
-        else Relevant Chunks Found
-            RAGSvc->>RAGSvc: Wrap chunks in untrusted delimiters (<untrusted_document_context>)
-            RAGSvc->>RAGSvc: Assemble prompt (System rules + Context + Query)
-            RAGSvc->>Router: Dispatch prompt to primary LLM (Claude 3.5 Sonnet)
-            alt Primary Provider Fails (HTTP 429 / 5xx / Timeout)
-                Router->>Router: Circuit breaker triggers -> Failover to OpenAI GPT-4o
-                Router->>AIProvider: OpenAI completion request
-                AIProvider-->>Router: Fallback response + tokens used
-            else Primary Provider Succeeds
-                Router->>AIProvider: Anthropic completion request
-                AIProvider-->>Router: Primary response + tokens used
+        RAGSvc->>Gate: Evaluate evidence sufficiency (query terms, chunk coverage)
+        alt Insufficient Evidence (Coverage < 25%)
+            Gate-->>RAGSvc: Short-circuit decision: INSUFFICIENT
+            RAGSvc-->>Gateway: Abstain honestly ("I do not have sufficient evidence...")
+            Gateway-->>WebClient: HTTP 200 with is_abstention=True (0 tokens used)
+        else Sufficient Evidence
+            Gate-->>RAGSvc: Triage: Filter distractors, detect date/numerical conflicts
+            RAGSvc->>Router: Synthesize answer with untrusted XML context blocks
+            Router->>Telemetry: Langfuse trace generation
+            Router->>Router: Try primary provider (Claude 3.5 Sonnet)
+            alt Primary API Failure (429 / 5xx)
+                Router->>Router: Automatic fallback to secondary provider (GPT-4o)
             end
-            Router-->>RAGSvc: Generated answer with citation tags [Doc: X, Chunk: Y]
-            RAGSvc->>RAGSvc: Grounding & citation validation check
-            RAGSvc->>RelationalDB: Persist user query, assistant answer, citations, token logs
-            RAGSvc-->>Gateway: Deliver response payload with verified citations
-            Gateway-->>WebClient: Stream answer with interactive clickable citations
-            WebClient-->>Engineer: Render grounded answer + source drawer
+            Router-->>RAGSvc: Raw generated text + token counts
+            Router->>DB: Log single-entry LLMUsageEvent in `llm_logs`
+            
+            RAGSvc->>Verifier: Verify claim grounding against cited chunks
+            Verifier-->>RAGSvc: Grounding verification result + ungrounded claims
+            RAGSvc->>DB: Persist user message, assistant message, and citations
+            RAGSvc-->>Gateway: ChatResponse (answer, citations, latency_ms)
+            Gateway-->>WebClient: HTTP 200 with grounded response & citations
+            WebClient-->>Engineer: Render answer with interactive clickable citations
         end
     end
-

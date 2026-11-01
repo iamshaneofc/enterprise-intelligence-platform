@@ -268,8 +268,8 @@ def test_rag_chat_denied_for_other_user_conversation(client: TestClient, test_us
         headers=user2_headers,
         json=chat_payload2,
     )
-    # Should get 400 (EntityNotFoundError) because conversation not found for user2
-    assert chat_resp2.status_code == 400
+    # Should get 404 (EntityNotFoundError) because conversation not found for user2
+    assert chat_resp2.status_code == 404
     error_data = chat_resp2.json()
     # EIPException handler returns {error, message, details}
     assert "message" in error_data or "detail" in error_data

@@ -722,3 +722,218 @@ The complete rationale and trade-offs for all foundational architectural choices
 - [ADR-007: Practical Cloud Deployment and Infrastructure Strategy](decisions/ADR-007-cloud-deployment-strategy.md)
 - [ADR-008: Document Access Model and Knowledge Base Organization](decisions/ADR-008-document-access-and-knowledge-organization.md)
 
+---
+
+## 23. Implementation Status: Current Working Architecture vs. Proposed Future Production Infrastructure
+
+To maintain complete architectural integrity and honesty, the table below explicitly delineates what is **actively implemented and verified in the codebase today** versus **proposed/future enterprise production infrastructure**.
+
+### 23.1 Current Working vs. Proposed Infrastructure Matrix
+
+| Architectural Layer | Current Working Implementation (Verified) | Proposed / Future Production Infrastructure |
+| :--- | :--- | :--- |
+| **Frontend SPA** | React 18, Vite 5, TypeScript, Tailwind CSS, Lucide icons, React Router v6. Fully integrated with backend REST APIs. | CDN distribution via CloudFront / Vercel Edge with automated preview deploys. |
+| **API Backend** | FastAPI modular monolith running via Uvicorn ASGI async runtime. JWT auth, RBAC dependencies, Pydantic v2 schemas. | Multi-container ECS Fargate or Kubernetes cluster behind AWS ALB / Cloudflare API Shield. |
+| **Relational Database** | PostgreSQL 16 (production) with SQLite fallback (local unit tests). Schema versioned via Alembic migrations. | AWS RDS PostgreSQL Multi-AZ with read replicas and automated point-in-time recovery. |
+| **Vector Storage** | `pgvector` extension with 1536-dimensional HNSW cosine indexing. In-memory / fallback mock embeddings for offline testing. | Dedicated vector partition with HNSW tuned for 10M+ chunks and pgvector replicas. |
+| **Document Storage** | Local persistent file storage (`storage/documents/`) with workspace isolation and SHA-256 deduplication. | Encrypted AWS S3 bucket with server-side KMS encryption and signed URL upload workflows. |
+| **Document Ingestion** | Native parsers for PDF (PyMuPDF / fitz), Markdown, CSV, and TXT. Recursive chunking with overlap boundaries. Executed via FastAPI BackgroundTasks. | Distributed Celery / ARQ background worker fleet with Redis message broker and dead-letter queues. |
+| **Retrieval Engine** | Hybrid retrieval combining dense vector similarity with sparse BM25 lexical search using Reciprocal Rank Fusion (RRF, $k=60$). | Cross-encoder reranking offloaded to GPU microservice (BGE-reranker-large) and hybrid index caching. |
+| **RAG Guardrails** | `EvidenceSufficiencyGate` ($< 25\%$ coverage short-circuits to abstention; PRIMARY/SUPPLEMENTARY chunk triage; date/numerical conflict detection), XML untrusted context isolation, and `verify_claim_grounding` verifier. | Fine-tuned NLI guard model running on dedicated inference endpoint; automated PII redaction filter. |
+| **LLM Orchestration** | `BaseLLMClient` interface with Anthropic Claude 3.5 Sonnet, OpenAI GPT-4o, and deterministic `FakeLLMClient`. Automatic circuit-breaker fallback router. | Enterprise LiteLLM proxy with dynamic latency-based routing, team rate quotas, and semantic caching. |
+| **AI Agent Loop** | Custom autonomous tool-calling engine (`AgentOrchestrator`). 3 functional tools: Knowledge Base Search, Document Analysis, Structured Report Generation. Max 5 steps, Pydantic param validation. | Multi-agent collaboration with human-in-the-loop approval workflows for destructive actions. |
+| **Conversational Memory** | Multi-session conversation manager with persistent messages, citation linkages, and sliding window token budgeting. | Semantic vector search across long-term user memory and Redis session caching. |
+| **Observability & Telemetry** | Native `llm_logs` database table (session_id, prompt/completion/cached tokens, latency_ms, cost_usd, error_type) with single-entry accounting. Langfuse v5 tracer (`@observe`). | Centralized Datadog / OpenTelemetry APM dashboards, Prometheus metrics, and automated alert routing. |
+| **Evaluation Harness** | 46-question golden evaluation dataset (`golden_evaluation_dataset.jsonl`), automated runner (`backend.evaluation.runner`), deterministic heuristic metrics, and REST API endpoints. | Continuous CI/CD evaluation gate running against frontier LLM judges on every pull request. |
+
+---
+
+### 23.2 Complete Current Working Architecture Diagram
+
+```mermaid
+flowchart TD
+    subgraph CLIENT_TIER ["Client Tier (Browser SPA - React 18 + Vite + TypeScript)"]
+        UI_AUTH["Auth & Workspace Guard"]
+        UI_DOCS["Document Manager & Chunk Explorer"]
+        UI_CHAT["RAG Chat & Citation Drawer"]
+        UI_AGENT["Agent Studio & Step Timeline"]
+        UI_EVAL["Live Evaluation Dashboard"]
+        UI_SETTINGS["Settings & Telemetry Diagnostics"]
+    end
+
+    subgraph API_GATEWAY ["FastAPI ASGI Application Server (Port 8000)"]
+        API_AUTH["/api/v1/auth (Register, Login, Me)"]
+        API_WS["/api/v1/workspaces"]
+        API_DOCS["/api/v1/workspaces/{id}/documents"]
+        API_CHAT["/api/v1/workspaces/{id}/chat"]
+        API_SEARCH["/api/v1/workspaces/{id}/search"]
+        API_AGENT["/api/v1/workspaces/{id}/agent/investigate"]
+        API_CONV["/api/v1/workspaces/{id}/conversations"]
+        API_EVAL["/api/v1/workspaces/{id}/evaluation/run"]
+        API_HEALTH["/health & /ready"]
+    end
+
+    subgraph CORE_SERVICES ["Core Intelligence & Service Layer"]
+        DOC_SVC["Document Ingestion Service\n(Parsers: PDF, MD, CSV, TXT)"]
+        CHUNK_SVC["Recursive Chunking & Tokenizer"]
+        RAG_SVC["RAG Service Orchestrator"]
+        GATE_SVC["Evidence Sufficiency Gate\n(Coverage, Triage, Conflicts)"]
+        VERIFY_SVC["Claim Grounding Verifier\n(Overlap & Echo Filter)"]
+        HYBRID_SVC["Hybrid Retrieval (Dense + BM25 + RRF)"]
+        AGENT_SVC["Autonomous Agent Engine\n(Max 5 Steps, Tool Chaining)"]
+        MEM_SVC["Conversational Memory Manager\n(Sliding Window, DB Storage)"]
+        LLM_ROUTER["LLM Provider Fallback Router\n(Single-entry usage accounting)"]
+    end
+
+    subgraph AGENT_TOOLS ["Controlled Agent Tools"]
+        T1["Knowledge Base Search"]
+        T2["Document Analysis"]
+        T3["Structured Report Generation"]
+    end
+
+    subgraph PERSISTENCE ["Persistence Tier (PostgreSQL 16 + pgvector / SQLite)"]
+        DB_USERS[("users")]
+        DB_WORKSPACES[("workspaces & members")]
+        DB_DOCS[("documents & chunks")]
+        DB_CONV[("conversations & messages")]
+        DB_CITATIONS[("citations")]
+        DB_RUNS[("agent_runs & tool_executions")]
+        DB_LOGS[("llm_logs (telemetry & tokens)")]
+        LOCAL_STORAGE[("Local File Storage\nstorage/documents/")]
+    end
+
+    subgraph OBSERVABILITY ["Observability & Tracing"]
+        LANGFUSE["Langfuse v5 Tracer\n(@observe decorators, fail-safe)"]
+        DB_TELEMETRY["SQLAlchemy Usage Telemetry\n(LLMUsageEvent, Cost, Tokens)"]
+    end
+
+    subgraph LLM_PROVIDERS ["LLM Provider Tier"]
+        CLAUDE["Anthropic Claude 3.5 Sonnet\n(Primary Provider)"]
+        OPENAI["OpenAI GPT-4o / Embeddings\n(Secondary Fallback)"]
+        FAKE_LLM["FakeLLMClient / FakeEmbeddings\n(Offline Deterministic Testing)"]
+    end
+
+    %% Wiring
+    CLIENT_TIER -->|HTTPS / REST API| API_GATEWAY
+    API_GATEWAY --> CORE_SERVICES
+
+    DOC_SVC --> CHUNK_SVC
+    CHUNK_SVC --> DB_DOCS
+    DOC_SVC --> LOCAL_STORAGE
+
+    RAG_SVC --> HYBRID_SVC
+    HYBRID_SVC --> DB_DOCS
+    RAG_SVC --> GATE_SVC
+    RAG_SVC --> LLM_ROUTER
+    RAG_SVC --> VERIFY_SVC
+    RAG_SVC --> MEM_SVC
+    MEM_SVC --> DB_CONV
+    RAG_SVC --> DB_CITATIONS
+
+    AGENT_SVC --> AGENT_TOOLS
+    T1 --> HYBRID_SVC
+    T2 --> DB_DOCS
+    T3 --> LLM_ROUTER
+    AGENT_SVC --> DB_RUNS
+
+    LLM_ROUTER --> CLAUDE
+    LLM_ROUTER -.->|Circuit-Breaker Failover| OPENAI
+    LLM_ROUTER -.->|Test Mode| FAKE_LLM
+
+    LLM_ROUTER --> DB_LOGS
+    CORE_SERVICES --> LANGFUSE
+```
+
+---
+
+### 23.3 End-to-End Request & Question-Answering Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Engineering User
+    participant Frontend as React SPA (Vite)
+    participant API as FastAPI Router (/chat)
+    participant Memory as Memory Service
+    participant Gate as Evidence Sufficiency Gate
+    participant Hybrid as Hybrid Search (Dense + BM25)
+    participant PGV as pgvector & Storage
+    participant Router as LLM Fallback Router
+    participant Verifier as Grounding Verifier
+    participant Telemetry as Usage Telemetry & Langfuse
+
+    User->>Frontend: Enters query ("What caused Incident 104?")
+    Frontend->>API: POST /api/v1/workspaces/{ws_id}/chat (query, conv_id)
+    API->>Memory: Get active conversation window
+    Memory-->>API: Prior message history
+    API->>Hybrid: Retrieve evidence (query, top_k=5, mode="hybrid")
+    Hybrid->>PGV: Execute Dense Vector Search (pgvector)
+    Hybrid->>PGV: Execute BM25 Sparse Lexical Search
+    PGV-->>Hybrid: Candidate Chunks
+    Hybrid->>Hybrid: Reciprocal Rank Fusion (RRF k=60)
+    Hybrid-->>API: Top fused candidate chunks
+    API->>Gate: Evaluate evidence sufficiency (query, chunks)
+    alt Insufficient Evidence (Coverage < 25%)
+        Gate-->>API: GateDecision(status=INSUFFICIENT, short_circuit=True)
+        API-->>Frontend: Honest abstention notice (no LLM call, 0 token cost)
+    else Sufficient Evidence
+        Gate-->>API: Filtered & triaged chunks (PRIMARY + SUPPLEMENTARY)
+        API->>Router: Generate response (Prompt + Untrusted XML Context)
+        Router->>Telemetry: Initialize Langfuse trace
+        Router->>Router: Try Primary Provider (Claude 3.5 Sonnet)
+        alt Primary Fails (429 / 5xx / Network)
+            Router->>Router: Failover to Secondary Provider (GPT-4o)
+        end
+        Router-->>API: Model output + Token Usage
+        Router->>Telemetry: Persist LLMUsageEvent (single-entry record in llm_logs)
+        API->>Verifier: Verify claim grounding (answer, cited chunks)
+        Verifier-->>API: Grounding status + ungrounded claims list
+        API->>Memory: Persist user message, assistant answer, and citations
+        API-->>Frontend: ChatResponse(answer, citations, is_abstention, ungrounded_claims)
+        Frontend-->>User: Rendered response with interactive citation badges
+    end
+```
+
+---
+
+### 23.4 Document Ingestion & Vectorization Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Engineer
+    participant Frontend as Document Manager UI
+    participant API as FastAPI Router (/documents/upload)
+    participant Storage as File Storage System
+    participant Parser as Ingestion Parser (PyMuPDF / Text)
+    participant Chunker as Recursive Chunker
+    participant Embedder as Embedding Model (OpenAI / Fake)
+    participant DB as PostgreSQL 16 + pgvector
+
+    User->>Frontend: Selects file (PDF, TXT, MD, CSV) & clicks Upload
+    Frontend->>API: POST /api/v1/workspaces/{ws_id}/documents/upload (multipart)
+    API->>API: Validate file extension & size (max 20MB)
+    API->>API: Compute SHA-256 checksum
+    API->>DB: Check for duplicate file hash in workspace
+    alt Hash Collision Detected
+        DB-->>API: Existing document found
+        API-->>Frontend: HTTP 409 Conflict (or returns existing document ID)
+    else Unique File
+        API->>Storage: Persist file to storage/documents/{id}/
+        API->>DB: Insert document record (status="PENDING")
+        API-->>Frontend: HTTP 202 Accepted (document metadata)
+        Note over API,DB: BackgroundTask Processing Begins
+        API->>Parser: Extract text & structural metadata
+        Parser-->>API: Extracted raw text
+        API->>Chunker: Divide text into semantic chunks (~512 tokens, 10% overlap)
+        Chunker-->>API: List of text chunks with index and metadata
+        API->>Embedder: Generate 1536-dimensional embeddings (batch)
+        Embedder-->>API: Dense vector representations
+        API->>DB: Batch insert into `chunks` (content, metadata, vector embedding)
+        API->>DB: Update document status to "INDEXED" (chunk_count=N)
+        Frontend->>API: Poll GET /documents/{id}
+        API-->>Frontend: Document status "INDEXED" -> UI renders green checkmark
+    end
+```
+
+

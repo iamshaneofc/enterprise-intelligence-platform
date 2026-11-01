@@ -103,3 +103,25 @@ def verify_workspace_access(
         
     return workspace
 
+
+def verify_resource_workspace_match(
+    resource_workspace_id: str,
+    requested_workspace_id: str,
+    resource_type: str = "resource"
+) -> None:
+    """
+    Defense-in-depth: Assert that a resource belongs to the requested workspace.
+    This prevents cross-workspace access at the service layer even if API routing
+    is bypassed. Compatible with both SQLite and PostgreSQL.
+    
+    Note: PostgreSQL Row Level Security (RLS) provides database-level enforcement
+    but is PostgreSQL-only and incompatible with the default SQLite database.
+    RLS is documented as a future improvement; this function provides
+    application-layer defense-in-depth for all database backends.
+    """
+    if resource_workspace_id != requested_workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{resource_type} not found in workspace"
+        )
+

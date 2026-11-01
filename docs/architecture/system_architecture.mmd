@@ -1,129 +1,103 @@
-flowchart TB
+flowchart TD
     %% =========================================================================
-    %% SYSTEM ARCHITECTURE — ENGINEERING INTELLIGENCE PLATFORM
+    %% SYSTEM ARCHITECTURE — ENGINEERING INTELLIGENCE PLATFORM (CURRENT WORKING)
     %% =========================================================================
 
-    subgraph CLIENT_TIER ["Client Presentation Tier (Browser)"]
-        User(["Engineering User / SRE"]):::actorNode
-        subgraph SPA ["React 18 + Vite + TypeScript SPA"]
-            AuthUI["Auth & Route Guard<br/>(JWT / Session)"]
-            DocUI["Document Manager<br/>(Upload / Metadata)"]
-            ChatUI["Knowledge Chat<br/>(Markdown / Citations)"]
-            AgentUI["Agent Studio<br/>(Step Execution View)"]
-            DashUI["Dashboard & Analytics<br/>(Tokens / Latency / Logs)"]
-        end
-        User <-->|"HTTPS / WSS / REST"| SPA
+    subgraph CLIENT_TIER ["Client Presentation Tier (Browser SPA - React 18 + Vite + TypeScript)"]
+        UI_AUTH["Auth & Workspace Guard<br/>(JWT / Session State)"]
+        UI_DOCS["Document Manager & Chunk Explorer<br/>(Upload Dropzone, Chunk Modal)"]
+        UI_CHAT["Knowledge Chat & Citation Drawer<br/>(Grounded Markdown, Evidence Badges)"]
+        UI_AGENT["Agent Studio & Step Timeline<br/>(Plan, Tool Runs, Final Output)"]
+        UI_EVAL["Live Evaluation Dashboard<br/>(Aggregate Metrics & Category Breakdown)"]
+        UI_SETTINGS["Settings & Telemetry Diagnostics<br/>(Usage Stats & System Health)"]
     end
 
-    subgraph CLOUD_INFRA ["Production Cloud Boundary (AWS / Containerized Environment)"]
-
-        subgraph INGRESS_TIER ["API Ingress & Gateway Tier"]
-            Nginx["Nginx Reverse Proxy<br/>(SSL Termination & CORS)"]
-            FastAPIGateway["FastAPI Application Server<br/>(Uvicorn Async ASGI)"]
-            AuthMiddleware["Auth & RBAC Middleware<br/>(JWT Verification)"]
-            RateLimiter["Rate Limiting & Input Guard<br/>(Pydantic Validation)"]
-
-            Nginx <-->|"Reverse Proxy"| FastAPIGateway
-            FastAPIGateway --> AuthMiddleware --> RateLimiter
-        end
-
-        subgraph BACKEND_TIER ["Modular Monolith Backend Services (Python 3.11+)"]
-            DocService["Document Ingestion Service<br/>(PyMuPDF / Parsers / SHA-256)"]
-            RAGService["Advanced RAG Orchestrator<br/>(Context Assembly & Verification)"]
-            RetrievalService["Hybrid Retrieval Engine<br/>(Dense Vector + BM25 FullText)"]
-            RerankService["Cross-Encoder Reranker<br/>(Semantic Score & Rerank)"]
-            AgentService["Autonomous Agent Engine<br/>(Loop & Parameter Validation)"]
-            MemoryService["Conversational Memory Service<br/>(Sliding Window & Summarization)"]
-            EvalService["Evaluation Harness<br/>(RAGAS / DeepEval Suite)"]
-
-            subgraph AGENT_TOOLS ["Controlled Agent Tool Suite"]
-                ToolSearch["Tool 1: KB Search<br/>(Vector & Metadata Query)"]
-                ToolAnalyze["Tool 2: Doc Analysis<br/>(Events / Causes / Symptoms)"]
-                ToolReport["Tool 3: Structured Report<br/>(Executive Findings & Advice)"]
-            end
-
-            subgraph LLM_ABSTRACTION ["LLM Provider Abstraction & Resiliency"]
-                Router["Provider Fallback Router<br/>(Circuit Breaker & Token Accounting)"]
-                OpenAIAdapter["OpenAI Adapter<br/>(GPT-4o / Embeddings)"]
-                AnthropicAdapter["Anthropic Adapter<br/>(Claude 3.5 Sonnet)"]
-                Router --> OpenAIAdapter
-                Router --> AnthropicAdapter
-            end
-        end
-
-        subgraph ASYNC_TIER ["Asynchronous Processing Tier"]
-            RedisQueue[("Redis 7<br/>Task Queue & Locks")]
-            WorkerPool["Background Workers<br/>(Chunking / Embedding Tasks)"]
-            RedisQueue <--> WorkerPool
-        end
-
-        subgraph DATA_TIER ["Persistence & State Tier"]
-            PostgresRelational[("PostgreSQL 16 DB<br/>Users / Docs / Sessions / Logs")]
-            PgVectorStore[("pgvector Extension<br/>HNSW 1536d Cosine Index")]
-            DocStore[("Object Storage / S3<br/>Raw Technical Documents")]
-            CacheStore[("Redis 7 Cache<br/>Embeddings & Query Cache")]
-        end
-
-        subgraph TELEMETRY_TIER ["Observability & Monitoring"]
-            Logger["Structured JSON Logger<br/>(Correlation ID & Audit Trail)"]
-            MetricsCollector["Prometheus / Metrics Exporter<br/>(Latency & Token Tracking)"]
-        end
+    subgraph API_GATEWAY ["FastAPI ASGI Application Server (Port 8000)"]
+        API_AUTH["/api/v1/auth<br/>(Register, Login, Me)"]
+        API_WS["/api/v1/workspaces<br/>(CRUD, Scoping)"]
+        API_DOCS["/api/v1/workspaces/{id}/documents<br/>(Upload, Chunks, Delete)"]
+        API_CHAT["/api/v1/workspaces/{id}/chat<br/>(Grounded RAG & Citations)"]
+        API_SEARCH["/api/v1/workspaces/{id}/search<br/>(Dense, Sparse, Hybrid)"]
+        API_AGENT["/api/v1/workspaces/{id}/agent/investigate<br/>(Multi-Step Tool Loop)"]
+        API_CONV["/api/v1/workspaces/{id}/conversations<br/>(History & Persistence)"]
+        API_EVAL["/api/v1/workspaces/{id}/evaluation/run<br/>(Benchmark Execution)"]
+        API_HEALTH["/health & /ready<br/>(System Diagnostics)"]
     end
 
-    subgraph EXTERNAL_PROVIDERS ["External AI Model Providers"]
-        OpenAIAPI["OpenAI API<br/>(text-embedding-3-small / GPT-4o)"]
-        AnthropicAPI["Anthropic API<br/>(Claude 3.5 Sonnet)"]
+    subgraph CORE_SERVICES ["Core Intelligence & Service Layer"]
+        DOC_SVC["Document Ingestion Service<br/>(PyMuPDF, MD, CSV, TXT Parsers)"]
+        CHUNK_SVC["Recursive Chunking & Tokenizer<br/>(Semantic Boundary Overlap)"]
+        RAG_SVC["RAG Service Orchestrator<br/>(Context Assembly & Execution)"]
+        GATE_SVC["Evidence Sufficiency Gate<br/>(Coverage Filter, Chunk Triage, Conflict Check)"]
+        VERIFY_SVC["Claim Grounding Verifier<br/>(Token Overlap & Echo Stripping)"]
+        HYBRID_SVC["Hybrid Retrieval Engine<br/>(Dense pgvector + BM25 FullText + RRF k=60)"]
+        AGENT_SVC["Autonomous Agent Engine<br/>(Max 5 Steps, Loop Limits, Param Validation)"]
+        MEM_SVC["Conversational Memory Manager<br/>(Sliding Window & Session Scoping)"]
+        LLM_ROUTER["LLM Provider Fallback Router<br/>(Single-Entry Usage Accounting)"]
     end
 
-    %% Wiring Connections
-    SPA <-->|"REST API / SSE Streams"| Nginx
+    subgraph AGENT_TOOLS ["Controlled Agent Tools"]
+        T1["Tool 1: Knowledge Base Search<br/>(Dense/Sparse Hybrid Query)"]
+        T2["Tool 2: Document Analysis<br/>(Events, Symptoms, Causes)"]
+        T3["Tool 3: Structured Report Generation<br/>(Findings, Evidence, Advice)"]
+    end
 
-    RateLimiter --> DocService
-    RateLimiter --> RAGService
-    RateLimiter --> AgentService
-    RateLimiter --> MemoryService
-    RateLimiter --> EvalService
+    subgraph PERSISTENCE ["Persistence Tier (PostgreSQL 16 + pgvector / SQLite)"]
+        DB_USERS[("users<br/>(Auth, Roles)")]
+        DB_WORKSPACES[("workspaces & workspace_members<br/>(Tenant Scoping)")]
+        DB_DOCS[("documents & chunks<br/>(Relational Meta + 1536d Vectors)")]
+        DB_CONV[("conversations & messages<br/>(Thread History)")]
+        DB_CITATIONS[("citations<br/>(Marker, Snippet, Score)")]
+        DB_RUNS[("agent_runs & agent_tool_executions<br/>(Timeline Audit)")]
+        DB_LOGS[("llm_logs<br/>(Tokens, Latency, Cost, Telemetry)")]
+        LOCAL_STORAGE[("Local File Storage<br/>storage/documents/")]
+    end
 
-    DocService -->|"Dispatch Ingestion Job"| RedisQueue
-    DocService -->|"Store Raw Files"| DocStore
-    WorkerPool -->|"Batch Vectors"| PgVectorStore
-    WorkerPool -->|"Update Job Status"| PostgresRelational
-    WorkerPool -->|"Generate Embeddings"| Router
+    subgraph OBSERVABILITY ["Observability & Tracing Tier"]
+        LANGFUSE["Langfuse v5 Tracer<br/>(@observe Decorators, Fail-Safe Local/Cloud)"]
+        DB_TELEMETRY["SQLAlchemy Usage Telemetry<br/>(LLMUsageEvent, Single-Entry Logging)"]
+    end
 
-    RAGService -->|"Fetch Context History"| MemoryService
-    RAGService -->|"Execute Hybrid Search"| RetrievalService
-    RetrievalService -->|"Vector Cosine Search"| PgVectorStore
-    RetrievalService -->|"BM25 Full-Text Search"| PostgresRelational
-    RetrievalService -->|"Rerank Candidates"| RerankService
-    RerankService -->|"Top Ranked Evidence"| RAGService
-    RAGService -->|"Prompt with Guardrails"| Router
+    subgraph LLM_PROVIDERS ["LLM Provider Tier"]
+        CLAUDE["Anthropic Claude 3.5 Sonnet<br/>(Primary Reasoning & Generation)"]
+        OPENAI["OpenAI GPT-4o / text-embedding-3-small<br/>(Secondary Fallback & Vectors)"]
+        FAKE_LLM["FakeLLMClient & FakeEmbeddings<br/>(Deterministic Offline Test Mode)"]
+    end
 
-    AgentService -->|"Select & Invoke"| AGENT_TOOLS
-    ToolSearch --> RetrievalService
-    ToolAnalyze --> DocService
-    ToolReport --> Router
-    AgentService -->|"Reason & Plan"| Router
+    subgraph PROPOSED_FUTURE ["Proposed / Future Production Infrastructure"]
+        REDIS_QUEUE[("Redis 7 Task Broker<br/>(Distributed Celery / ARQ Workers)")]
+        S3_STORAGE[("AWS S3 Bucket<br/>(KMS Encrypted Raw Document Store)")]
+        RERANK_GPU["Cross-Encoder GPU Microservice<br/>(BGE-Reranker-Large)"]
+        METRICS_PROM["Prometheus / OpenTelemetry APM<br/>(Centralized Distributed Tracing)"]
+    end
 
-    MemoryService <-->|"Session & Turns"| PostgresRelational
-    MemoryService <-->|"Fast Session Cache"| CacheStore
+    %% Wiring
+    CLIENT_TIER -->|"HTTPS / REST API"| API_GATEWAY
+    API_GATEWAY --> CORE_SERVICES
 
-    Router -->|"Tokens & Latency"| Logger
-    Router -->|"Metric Counters"| MetricsCollector
+    DOC_SVC --> CHUNK_SVC
+    CHUNK_SVC --> DB_DOCS
+    DOC_SVC --> LOCAL_STORAGE
 
-    OpenAIAdapter <-->|"HTTPS REST"| OpenAIAPI
-    AnthropicAdapter <-->|"HTTPS REST"| AnthropicAPI
+    RAG_SVC --> HYBRID_SVC
+    HYBRID_SVC --> DB_DOCS
+    RAG_SVC --> GATE_SVC
+    RAG_SVC --> LLM_ROUTER
+    RAG_SVC --> VERIFY_SVC
+    RAG_SVC --> MEM_SVC
+    MEM_SVC --> DB_CONV
+    RAG_SVC --> DB_CITATIONS
 
-    %% Styling Classes
-    classDef actorNode fill:#1E293B,stroke:#0F172A,stroke-width:2px,color:#FFFFFF,font-weight:bold;
-    classDef clientNode fill:#EFF6FF,stroke:#3B82F6,stroke-width:1.5px,color:#1E3A8A;
-    classDef serviceNode fill:#F8FAFC,stroke:#64748B,stroke-width:1.5px,color:#0F172A;
-    classDef dataNode fill:#F0FDF4,stroke:#22C55E,stroke-width:1.5px,color:#14532D;
-    classDef aiNode fill:#FAF5FF,stroke:#A855F7,stroke-width:1.5px,color:#581C87;
-    classDef queueNode fill:#FFFBEB,stroke:#F59E0B,stroke-width:1.5px,color:#78350F;
+    AGENT_SVC --> AGENT_TOOLS
+    T1 --> HYBRID_SVC
+    T2 --> DB_DOCS
+    T3 --> LLM_ROUTER
+    AGENT_SVC --> DB_RUNS
 
-    class SPA,AuthUI,DocUI,ChatUI,AgentUI,DashUI clientNode;
-    class DocService,RAGService,RetrievalService,RerankService,AgentService,MemoryService,EvalService,WorkerPool serviceNode;
-    class PostgresRelational,PgVectorStore,DocStore,CacheStore dataNode;
-    class Router,OpenAIAdapter,AnthropicAdapter,OpenAIAPI,AnthropicAPI,ToolSearch,ToolAnalyze,ToolReport aiNode;
-    class RedisQueue queueNode;
+    LLM_ROUTER --> CLAUDE
+    LLM_ROUTER -.->|"Circuit-Breaker Failover"| OPENAI
+    LLM_ROUTER -.->|"Test Benchmark Mode"| FAKE_LLM
 
+    LLM_ROUTER --> DB_LOGS
+    CORE_SERVICES --> LANGFUSE
+    DB_LOGS --> DB_TELEMETRY

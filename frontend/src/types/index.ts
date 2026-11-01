@@ -180,3 +180,68 @@ export interface EvaluationMetricSummary {
   primary_model: string;
 }
 
+export interface AggregateMetrics {
+  retrieval: {
+    avg_precision_at_k: number;
+    avg_recall_at_k: number;
+    avg_mrr: number;
+  };
+  citation: {
+    avg_resolution_rate: number;
+    avg_grounding_rate: number;
+    avg_hallucination_rate: number;
+  };
+  abstention: {
+    accuracy: number;
+    false_abstention_rate: number;
+    false_answer_rate: number;
+  };
+  latency: {
+    avg_latency_ms: number;
+    avg_prompt_tokens: number;
+    avg_completion_tokens: number;
+    avg_total_tokens: number;
+  };
+}
+
+export interface QuestionEvaluationResult {
+  question_id: string;
+  question: string;
+  answer: string;
+  is_abstention: boolean;
+  citations: any[];
+  ungrounded_claims: string[];
+  latency_ms: number;
+  retrieval: {
+    precision_at_k: number;
+    recall_at_k: number;
+    reciprocal_rank: number;
+  };
+  citation: {
+    resolution_rate: number;
+    grounding_rate: number;
+    hallucination_rate: number;
+  };
+  abstention: {
+    is_correct: number;
+    false_abstention: number;
+    false_answer: number;
+  };
+}
+
+export interface LiveEvaluationResponse {
+  status: string;
+  message?: string;
+  results?: {
+    config: {
+      dataset_path: string;
+      use_fake_llm: boolean;
+      use_fake_embeddings: boolean;
+      top_k: number;
+      output_path?: string | null;
+    };
+    aggregate_metrics: AggregateMetrics;
+    per_question_results: QuestionEvaluationResult[];
+  };
+}
+

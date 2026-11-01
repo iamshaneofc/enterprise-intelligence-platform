@@ -8,7 +8,14 @@ from backend.app.core.exceptions import EntityNotFoundError
 from backend.app.retrieval.hybrid import hybrid_retriever
 from backend.app.rag.prompt_templates import RAG_SYSTEM_PROMPT, build_rag_user_prompt
 from backend.app.rag.citations import CitationMap
-from backend.app.rag.grounding import is_model_abstention, find_ungrounded_claims
+from backend.app.rag.grounding import (
+    is_model_abstention,
+    find_ungrounded_claims,
+    verify_claim_grounding,
+    strip_evidence_echo,
+)
+from backend.app.rag.evidence_gate import evidence_sufficiency_gate, EvidenceDecision
+from backend.app.observability.langfuse_tracer import observe
 from backend.app.llm.base import LLMMessage
 from backend.app.llm.router import llm_router
 from backend.app.models.conversation import Conversation, Message, Citation
@@ -60,6 +67,7 @@ class RAGService:
             total_results=len(items),
         )
 
+    @observe(name="rag_response_generation")
     def generate_rag_response(
         self,
         query: str,
@@ -98,16 +106,99 @@ class RAGService:
             db=db,
         )
 
-        citation_map = CitationMap(retrieved_chunks)
+        # 3. Assess Evidence Sufficiency & Conflict Detection Gate
+        assessment = evidence_sufficiency_gate.assess_evidence(query, retrieved_chunks)
 
-        # 3. Build prompt
-        user_prompt = build_rag_user_prompt(query, retrieved_chunks)
+        if assessment.decision == EvidenceDecision.INSUFFICIENT:
+            # Deterministic Pre-Generation Abstention: short-circuit without calling LLM
+            abstain_content = f"ABSTAIN: insufficient_evidence. {assessment.rationale}"
+            user_msg = Message(
+                conversation_id=conversation_id,
+                role="user",
+                content=query,
+                token_count=len(query) // 4,
+            )
+            db.add(user_msg)
+
+            assistant_msg = Message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=abstain_content,
+                token_count=len(abstain_content) // 4,
+                msg_metadata={
+                    "is_abstention": True,
+                    "evidence_decision": assessment.decision.value,
+                    "confidence_score": assessment.confidence_score,
+                    "pre_generation_gate": True,
+                },
+            )
+            db.add(assistant_msg)
+            db.commit()
+
+            return ChatResponse(
+                answer=abstain_content,
+                conversation_id=conversation_id,
+                message_id=assistant_msg.id,
+                citations=[],
+                is_abstention=True,
+                ungrounded_claims=[],
+                model_used="evidence_sufficiency_gate",
+                provider_used="system",
+                latency_ms=1,
+            )
+
+        if assessment.decision == EvidenceDecision.CONFLICTING and assessment.conflict:
+            # Detectable factual contradiction between documents
+            conflict_content = (
+                f"ABSTAIN: conflicting_evidence. {assessment.conflict.description}"
+            )
+            user_msg = Message(
+                conversation_id=conversation_id,
+                role="user",
+                content=query,
+                token_count=len(query) // 4,
+            )
+            db.add(user_msg)
+
+            assistant_msg = Message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=conflict_content,
+                token_count=len(conflict_content) // 4,
+                msg_metadata={
+                    "is_abstention": True,
+                    "evidence_decision": assessment.decision.value,
+                    "conflict_details": assessment.conflict.description,
+                    "confidence_score": assessment.confidence_score,
+                },
+            )
+            db.add(assistant_msg)
+            db.commit()
+
+            return ChatResponse(
+                answer=conflict_content,
+                conversation_id=conversation_id,
+                message_id=assistant_msg.id,
+                citations=[],
+                is_abstention=True,
+                ungrounded_claims=[],
+                model_used="evidence_sufficiency_gate",
+                provider_used="system",
+                latency_ms=1,
+            )
+
+        # 4. Filter Context Chunks: only inject PRIMARY and SUPPLEMENTARY chunks
+        context_chunks = assessment.chunks_for_context if assessment.chunks_for_context else retrieved_chunks
+        citation_map = CitationMap(context_chunks)
+
+        # 5. Build prompt
+        user_prompt = build_rag_user_prompt(query, context_chunks)
         messages = [
             LLMMessage(role="system", content=RAG_SYSTEM_PROMPT),
             LLMMessage(role="user", content=user_prompt),
         ]
 
-        # 4. Invoke LLM via router
+        # 6. Invoke LLM via router
         llm_resp = llm_router.generate(
             messages=messages,
             workspace_id=workspace_id,
@@ -115,14 +206,17 @@ class RAGService:
             db=db,
         )
 
-        # 5. Verify Grounding and Citations
-        is_abstain = is_model_abstention(llm_resp.content)
-        citations = citation_map.resolve(llm_resp.content) if not is_abstain else []
-        
-        context_texts = [r.chunk.content for r in retrieved_chunks]
-        ungrounded = find_ungrounded_claims(llm_resp.content, context_texts) if not is_abstain else []
+        # 7. Active Post-Generation Claim Verification & Grounding
+        context_texts = [r.chunk.content for r in context_chunks]
+        chunk_marker_map = {f"[c_{i}]": r.chunk.content for i, r in enumerate(context_chunks)}
+        verification = verify_claim_grounding(llm_resp.content, context_texts, chunk_marker_map)
 
-        # 6. Save Messages and Citations in DB
+        final_content = verification.verified_answer
+        is_abstain = is_model_abstention(final_content) or verification.should_abstain
+        citations = citation_map.resolve(final_content) if not is_abstain else []
+        ungrounded = verification.ungrounded_claims if not is_abstain else []
+
+        # 8. Save Messages and Citations in DB
         user_msg = Message(
             conversation_id=conversation_id,
             role="user",
@@ -134,7 +228,7 @@ class RAGService:
         assistant_msg = Message(
             conversation_id=conversation_id,
             role="assistant",
-            content=llm_resp.content,
+            content=final_content,
             token_count=llm_resp.completion_tokens,
             msg_metadata={
                 "model": llm_resp.model,
@@ -142,6 +236,10 @@ class RAGService:
                 "is_fallback": llm_resp.is_fallback,
                 "is_abstention": is_abstain,
                 "ungrounded_claims_count": len(ungrounded),
+                "grounding_score": verification.grounding_score,
+                "hallucination_rate": verification.hallucination_rate,
+                "evidence_decision": assessment.decision.value,
+                "confidence_score": assessment.confidence_score,
             },
         )
         db.add(assistant_msg)
@@ -162,7 +260,7 @@ class RAGService:
         db.commit()
 
         return ChatResponse(
-            answer=llm_resp.content,
+            answer=final_content,
             conversation_id=conversation_id,
             message_id=assistant_msg.id,
             citations=citations,

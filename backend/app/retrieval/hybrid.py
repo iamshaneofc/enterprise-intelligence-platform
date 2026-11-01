@@ -8,6 +8,7 @@ from backend.app.models.chunk import Chunk
 from backend.app.models.document import Document
 from backend.app.repositories.vector_repo import vector_repo
 from backend.app.embeddings.provider import get_embedding_provider
+from backend.app.observability.langfuse_tracer import observe
 
 
 @dataclass
@@ -24,6 +25,7 @@ class HybridRetriever:
     def __init__(self, rrf_k: int = settings.RRF_K):
         self.rrf_k = rrf_k
 
+    @observe(name="hybrid_retrieval")
     def retrieve(
         self,
         query: str,

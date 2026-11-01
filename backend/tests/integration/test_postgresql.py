@@ -73,6 +73,11 @@ def pg_engine():
     # Create all tables
     Base.metadata.create_all(bind=engine)
     
+    # Create ivfflat index for vector similarity search
+    with engine.connect() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_chunks_embedding_ivfflat ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"))
+        conn.commit()
+    
     yield engine
     
     # Cleanup
@@ -94,9 +99,11 @@ def pg_session(pg_engine):
 
 @pytest.fixture(scope="function")
 def test_user_and_workspace(pg_session):
-    """Create a test user and workspace."""
+    """Create a test user and workspace with unique email."""
+    import uuid
+    unique_id = uuid.uuid4().hex[:8]
     user = User(
-        email="pg_test@enterprise.io",
+        email=f"pg_test_{unique_id}@enterprise.io",
         hashed_password="hashed_password",
         full_name="PostgreSQL Test User",
         role="engineer",

@@ -30,9 +30,13 @@ class VectorType(TypeDecorator):
             return dialect.type_descriptor(PgVector(settings.EMBEDDING_DIMENSION))
         return dialect.type_descriptor(Text())
 
-    def process_bind_param(self, value: Optional[List[float]], dialect: Any) -> Optional[str]:
+    def process_bind_param(self, value: Optional[List[float]], dialect: Any) -> Any:
         if value is None:
             return None
+        # For PostgreSQL with pgvector, pass the list directly to pgvector's type
+        if PGVECTOR_AVAILABLE and dialect.name == "postgresql":
+            return value
+        # For other dialects, serialize as JSON
         if isinstance(value, (list, tuple)):
             return json.dumps([float(x) for x in value])
         return str(value)
@@ -40,6 +44,12 @@ class VectorType(TypeDecorator):
     def process_result_value(self, value: Optional[str], dialect: Any) -> Optional[List[float]]:
         if value is None:
             return None
+        # For PostgreSQL with pgvector, the value is already a list
+        if PGVECTOR_AVAILABLE and dialect.name == "postgresql":
+            if isinstance(value, list):
+                return [float(x) for x in value]
+            return value
+        # For other dialects, parse JSON
         if isinstance(value, list):
             return [float(x) for x in value]
         try:

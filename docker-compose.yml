@@ -31,7 +31,7 @@ services:
     environment:
       - ENVIRONMENT=production
       - DATABASE_URL=postgresql+psycopg2://postgres:postgrespassword@db:5432/engineering_intelligence
-      - SECRET_KEY=eip-enterprise-production-super-secret-key-replace-me-12345
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set in production}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - STORAGE_DIR=/app/storage/documents

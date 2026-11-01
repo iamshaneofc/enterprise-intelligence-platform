@@ -124,6 +124,7 @@ class DocumentChunker:
                 chunk_meta = {
                     "page_number": block.page_number,
                     "section_header": block.section_header,
+                    "heading": block.section_header,
                     "token_count": self.estimate_tokens(text_piece),
                     **block.metadata,
                 }
