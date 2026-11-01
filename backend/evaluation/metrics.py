@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from collections import Counter
 import json
 import re
+import math
 
 
 @dataclass
@@ -219,43 +220,154 @@ def compute_f1_token_overlap(
     return 2.0 * (precision * recall) / (precision + recall)
 
 
-def evaluate_retrieval_precision(
-    retrieved_chunks: List[Dict[str, Any]],
-    expected_citations: List[str],
-    top_k: int = 5,
+def compute_ir_metrics(
+    relevance_vector: List[int],
+    k: int = 5,
+    total_relevant: Optional[int] = None,
 ) -> Dict[str, float]:
     """
-    Evaluate retrieval precision at K.
+    Pure mathematical Information Retrieval evaluation.
     
-    Args:
-        retrieved_chunks: List of retrieved chunk dicts with 'chunk_id' and 'score'
-        expected_citations: List of expected citation markers like ['[c_0]', '[c_1]']
-        top_k: Number of top results to consider
-        
-    Returns:
-        Dict with precision, recall, MRR, NDCG metrics
+    Formulations:
+    - Precision@K = (Relevant Retrieved Items in Top K) / K
+      Denominator is fixed cutoff K. If fewer than K items are retrieved,
+      the unretrieved slots are treated as non-relevant.
+    - Recall@K = (Relevant Retrieved Items in Top K) / Total Relevant Items
+      Denominator is total_relevant in the corpus. If total_relevant == 0 (e.g. unanswerable),
+      returns 0.0.
+    - MRR (Mean Reciprocal Rank) = 1 / rank of the first relevant retrieved item in Top K,
+      or 0.0 if no relevant items retrieved in Top K.
+    - NDCG@K = DCG@K / IDCG@K
+      DCG@K = sum((2^rel - 1) / log2(rank + 1))
+      IDCG@K = sum(1.0 / log2(rank + 1)) for rank in 1..min(K, total_relevant).
+      If IDCG@K == 0, returns 0.0.
     """
-    if not retrieved_chunks:
-        return {"precision_at_k": 0.0, "recall_at_k": 0.0, "mrr": 0.0, "ndcg_at_k": 0.0}
-    
-    top_chunks = retrieved_chunks[:top_k]
-    
-    if expected_citations:
-        precision = 1.0 if top_chunks and top_chunks[0].get("content") else 0.0
-        recall = 1.0 if top_chunks else 0.0
+    if k <= 0 or not relevance_vector:
+        return {
+            "precision_at_k": 0.0,
+            "recall_at_k": 0.0,
+            "mrr": 0.0,
+            "ndcg_at_k": 0.0,
+        }
+
+    top_k_rel = relevance_vector[:k]
+    relevant_retrieved = sum(1 for r in top_k_rel if r > 0)
+
+    # 1. Precision@K
+    precision_at_k = relevant_retrieved / k
+
+    # 2. Recall@K
+    if total_relevant is None:
+        total_relevant = max(1, sum(1 for r in relevance_vector if r > 0))
+
+    if total_relevant <= 0:
+        recall_at_k = 0.0
     else:
-        precision = 0.0
-        recall = 0.0
-    
-    mrr = 1.0 if top_chunks else 0.0
-    ndcg = 1.0 if top_chunks else 0.0
-    
+        recall_at_k = min(1.0, relevant_retrieved / total_relevant)
+
+    # 3. MRR (Reciprocal Rank)
+    mrr = 0.0
+    for rank, r in enumerate(top_k_rel, start=1):
+        if r > 0:
+            mrr = 1.0 / rank
+            break
+
+    # 4. NDCG@K
+    dcg = sum((math.pow(2, r) - 1.0) / math.log2(rank + 1) for rank, r in enumerate(top_k_rel, start=1))
+    ideal_num = min(k, total_relevant) if total_relevant > 0 else 0
+    idcg = sum(1.0 / math.log2(rank + 1) for rank in range(1, ideal_num + 1))
+    ndcg_at_k = (dcg / idcg) if idcg > 0.0 else 0.0
+
     return {
-        "precision_at_k": precision,
-        "recall_at_k": recall,
-        "mrr": mrr,
-        "ndcg_at_k": ndcg,
+        "precision_at_k": round(precision_at_k, 6),
+        "recall_at_k": round(recall_at_k, 6),
+        "mrr": round(mrr, 6),
+        "ndcg_at_k": round(ndcg_at_k, 6),
     }
+
+
+def evaluate_retrieval_precision(
+    retrieved_chunks: List[Dict[str, Any]],
+    expected_citations: Optional[List[str]] = None,
+    top_k: int = 5,
+    ground_truth_context: Optional[str] = None,
+    relevant_chunk_ids: Optional[Set[str]] = None,
+    relevance_scores: Optional[List[float]] = None,
+    total_relevant: Optional[int] = None,
+    relevance_threshold: float = 0.20,
+) -> Dict[str, float]:
+    """
+    Evaluate retrieval precision, recall, MRR, and NDCG using exact Information Retrieval mathematics.
+    
+    Relevance Determination:
+    1. If `relevance_scores` is given: items with score >= relevance_threshold are marked relevant (1).
+    2. If `relevant_chunk_ids` is given: chunks whose chunk_id is in the set are relevant (1).
+    3. If `ground_truth_context` is given: content token overlap >= relevance_threshold or shared numbers/dates.
+    4. If only `expected_citations` is given: markers like '[c_0]' map to rank indices, or match chunk_id.
+    
+    Returns:
+        Dict with precision_at_k, recall_at_k, mrr, ndcg_at_k, and diagnostic breakdown.
+    """
+    if not retrieved_chunks or top_k <= 0:
+        return {
+            "precision_at_k": 0.0,
+            "recall_at_k": 0.0,
+            "mrr": 0.0,
+            "ndcg_at_k": 0.0,
+        }
+
+    top_chunks = retrieved_chunks[:top_k]
+    rel_vector: List[int] = []
+
+    # Strategy 1: Explicit relevance scores provided
+    if relevance_scores is not None:
+        rel_vector = [1 if (s >= relevance_threshold or s >= 1.0) else 0 for s in relevance_scores[:top_k]]
+        if total_relevant is None:
+            total_relevant = max(1, sum(1 for s in relevance_scores if (s >= relevance_threshold or s >= 1.0)))
+
+    # Strategy 2: Explicit set of relevant chunk IDs provided
+    elif relevant_chunk_ids is not None:
+        for ch in top_chunks:
+            cid = ch.get("chunk_id", "")
+            rel_vector.append(1 if cid in relevant_chunk_ids else 0)
+        if total_relevant is None:
+            total_relevant = len(relevant_chunk_ids)
+
+    # Strategy 3: Ground-truth reference context provided
+    elif ground_truth_context and ground_truth_context.strip():
+        gt_tokens = _extract_content_tokens(ground_truth_context)
+        gt_numbers = set(re.findall(r'\b\d+(?:[\.:-]\d+)*\b', ground_truth_context))
+
+        for ch in top_chunks:
+            content = ch.get("content", "")
+            ctx_tokens = _extract_content_tokens(content)
+            overlap = len(gt_tokens & ctx_tokens) / max(1, len(gt_tokens)) if gt_tokens else 0.0
+            ctx_numbers = set(re.findall(r'\b\d+(?:[\.:-]\d+)*\b', content))
+            has_num_overlap = bool(gt_numbers and (gt_numbers & ctx_numbers))
+            is_rel = 1 if (overlap >= relevance_threshold or has_num_overlap) else 0
+            rel_vector.append(is_rel)
+
+        if total_relevant is None:
+            total_relevant = max(1, sum(rel_vector))
+
+    # Strategy 4: Citation markers / expected citations fallback
+    elif expected_citations:
+        expected_set = set(expected_citations)
+        for idx, ch in enumerate(top_chunks):
+            cid = ch.get("chunk_id", "")
+            marker = f"[c_{idx}]"
+            is_rel = 1 if (marker in expected_set or cid in expected_set) else 0
+            rel_vector.append(is_rel)
+        if total_relevant is None:
+            total_relevant = len(expected_citations)
+
+    # Strategy 5: No ground truth context or citations provided (unanswerable / empty)
+    else:
+        rel_vector = [0] * len(top_chunks)
+        if total_relevant is None:
+            total_relevant = 0
+
+    return compute_ir_metrics(rel_vector, k=top_k, total_relevant=total_relevant)
 
 
 def evaluate_citation_accuracy(
@@ -375,6 +487,7 @@ def compute_aggregate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     precisions = [r.get("retrieval", {}).get("precision_at_k", 0) for r in results]
     recalls = [r.get("retrieval", {}).get("recall_at_k", 0) for r in results]
     mrrs = [r.get("retrieval", {}).get("mrr", 0) for r in results]
+    ndcgs = [r.get("retrieval", {}).get("ndcg_at_k", 0) for r in results if "ndcg_at_k" in r.get("retrieval", {})]
     
     # Citation metrics
     resolution_rates = [r.get("citation", {}).get("resolution_rate", 1) for r in results]
@@ -423,9 +536,10 @@ def compute_aggregate_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     
     metrics: Dict[str, Any] = {
         "retrieval": {
-            "avg_precision_at_k": sum(precisions) / len(precisions),
-            "avg_recall_at_k": sum(recalls) / len(recalls),
-            "avg_mrr": sum(mrrs) / len(mrrs),
+            "avg_precision_at_k": (sum(precisions) / len(precisions)) if precisions else 0.0,
+            "avg_recall_at_k": (sum(recalls) / len(recalls)) if recalls else 0.0,
+            "avg_mrr": (sum(mrrs) / len(mrrs)) if mrrs else 0.0,
+            "avg_ndcg_at_k": (sum(ndcgs) / len(ndcgs)) if ndcgs else 0.0,
         },
         "citation": {
             "avg_resolution_rate": sum(resolution_rates) / len(resolution_rates),

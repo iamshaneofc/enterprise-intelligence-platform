@@ -12,6 +12,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import settings
 from backend.app.db.session import SessionLocal
 from backend.app.models.user import User
 from backend.app.models.workspace import Workspace
@@ -251,6 +252,7 @@ class EvaluationRunner:
             ],
             expected_citations=question.get("expected_citations", []),
             top_k=self.config.top_k,
+            ground_truth_context=question.get("ground_truth_context", ""),
         )
         
         citation_metrics = evaluate_citation_accuracy(
@@ -357,8 +359,10 @@ def run_evaluation(
     # Override providers for fake mode
     if use_fake_llm:
         os.environ["USE_FAKE_LLM"] = "true"
+        settings.USE_FAKE_LLM = True
     if use_fake_embeddings:
         os.environ["USE_FAKE_EMBEDDINGS"] = "true"
+        settings.USE_FAKE_EMBEDDINGS = True
     
     runner = EvaluationRunner(config)
     return runner.run_evaluation()
