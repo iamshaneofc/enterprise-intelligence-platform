@@ -16,7 +16,7 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/documents", tags=["Documen
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     workspace_id: str,
-    file: UploadFile = File(..., max_size=50 * 1024 * 1024),  # 50MB enforced by FastAPI
+    file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
