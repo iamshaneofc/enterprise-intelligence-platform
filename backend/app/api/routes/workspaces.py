@@ -8,7 +8,7 @@ from backend.app.db.session import get_db
 from backend.app.models.user import User
 from backend.app.models.workspace import Workspace, WorkspaceMember
 from backend.app.schemas.workspace import WorkspaceCreateRequest, WorkspaceResponse
-from backend.app.api.dependencies import get_current_user
+from backend.app.api.dependencies import get_current_user, verify_workspace_access
 
 router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
 
@@ -72,12 +72,7 @@ def get_workspace(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get single workspace by ID."""
-    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
-    if not workspace:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workspace not found",
-        )
-    return workspace
+    """Get single workspace by ID with authorization verification."""
+    return verify_workspace_access(workspace_id, current_user, db)
+
 
