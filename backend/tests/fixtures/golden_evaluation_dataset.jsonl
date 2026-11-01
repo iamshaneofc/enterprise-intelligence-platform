@@ -1,0 +1,21 @@
+{"id": "q1", "question": "What was the date and start time of Incident 104?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q2", "question": "How many total connections were exhausted in the PostgreSQL pool during Incident 104?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q3", "question": "What was the initial client connection acquisition timeout and what was it lowered to?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q4", "question": "What table lacked an index causing sequential scans during Incident 104?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q5", "question": "What columns should the composite index be created on for billing ledger?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q6", "question": "What was max_connections scaled up to in the Aurora PostgreSQL cluster?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q7", "question": "What threshold triggers an alert for connection pool saturation?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q8", "question": "What is the normal baseline for Envoy upstream request time 99th percentile?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q9", "question": "At what latency threshold should Envoy circuit breaking be enabled to shed excess traffic?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q10", "question": "What command performs a rolling restart of degraded service pods?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q11", "question": "What asymmetric algorithm and key size are used for JWT signing?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q12", "question": "How frequently are the RSA private key pairs rotated?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q13", "question": "What is the time to live for access tokens?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q14", "question": "Where are revoked session tokens blacklisted?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q15", "question": "What is the TTL for refresh tokens?", "expected_citations": ["[c_0]"], "expected_to_abstain": false}
+{"id": "q16", "question": "Explain quantum teleportation entanglement protocols.", "expected_citations": [], "expected_to_abstain": true}
+{"id": "q17", "question": "What is the maximum memory allocated to the Redis cluster?", "expected_citations": [], "expected_to_abstain": true}
+{"id": "q18", "question": "Which Kubernetes cluster version is running in staging?", "expected_citations": [], "expected_to_abstain": true}
+{"id": "q19", "question": "What is the salary of the on-call engineer who responded at 14:32 UTC?", "expected_citations": [], "expected_to_abstain": true}
+{"id": "q20", "question": "What are the BGP routing tables configured on core routers?", "expected_citations": [], "expected_to_abstain": true}
+
