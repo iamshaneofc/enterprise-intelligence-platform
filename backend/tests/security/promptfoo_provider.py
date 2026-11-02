@@ -10,6 +10,13 @@ Or natively via pytest:
 """
 import os
 import sys
+
+# Force test environment BEFORE importing any app modules
+os.environ["USE_FAKE_LLM"] = "true"
+os.environ["USE_FAKE_EMBEDDINGS"] = "true"
+os.environ["ENVIRONMENT"] = "test"
+os.environ["SECRET_KEY"] = "dev-insecure-change-in-production-min-32-chars"
+
 from typing import Dict, Any, Optional
 
 # Ensure project root is in sys.path

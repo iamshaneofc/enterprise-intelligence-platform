@@ -1,10 +1,18 @@
 """Pytest fixtures and configuration."""
+import os
 import pytest
 from typing import Generator
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
+
+# Force test environment variables BEFORE importing app modules
+os.environ["USE_FAKE_LLM"] = "true"
+os.environ["USE_FAKE_EMBEDDINGS"] = "true"
+os.environ["ENVIRONMENT"] = "test"
+os.environ["SECRET_KEY"] = "dev-insecure-change-in-production-min-32-chars"
+os.environ["CORS_ORIGINS"] = "[]"
 
 from backend.app.main import app
 from backend.app.db.session import Base, get_db
@@ -13,6 +21,22 @@ from backend.app.core.config import settings
 # Force offline/test modes during test execution
 settings.USE_FAKE_LLM = True
 settings.USE_FAKE_EMBEDDINGS = True
+settings.CORS_ORIGINS = []
+settings.PRIMARY_LLM_PROVIDER = "anthropic"
+settings.PRIMARY_LLM_MODEL = "claude-3-5-sonnet-20241022"
+settings.FALLBACK_LLM_PROVIDER = "openai"
+settings.FALLBACK_LLM_MODEL = "gpt-4o"
+settings.SECRET_KEY = "dev-insecure-change-in-production-min-32-chars"
+settings.ENVIRONMENT = "test"
+settings.DEBUG = False
+
+# Disable rate limiting for tests
+settings.RATE_LIMIT_AUTH = 1000
+settings.RATE_LIMIT_AUTH_WINDOW = 1
+settings.RATE_LIMIT_UPLOAD = 1000
+settings.RATE_LIMIT_UPLOAD_WINDOW = 1
+settings.RATE_LIMIT_GENERAL = 10000
+settings.RATE_LIMIT_GENERAL_WINDOW = 1
 
 # Override test-specific settings
 settings.CORS_ORIGINS = []

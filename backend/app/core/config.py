@@ -85,8 +85,8 @@ class Settings(BaseSettings):
     })
 
     # Test & Offline Fallback Modes
-    USE_FAKE_LLM: bool = Field(default=False)
-    USE_FAKE_EMBEDDINGS: bool = Field(default=False)
+    USE_FAKE_LLM: bool = Field(default=False, description="Use fake LLM for offline testing")
+    USE_FAKE_EMBEDDINGS: bool = Field(default=False, description="Use fake embeddings for offline testing")
 
     # Retrieval & RAG Parameters
     CHUNK_SIZE: int = 1000

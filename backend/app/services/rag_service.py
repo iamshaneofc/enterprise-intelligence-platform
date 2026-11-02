@@ -25,6 +25,8 @@ from backend.app.schemas.chat import (
     ChatResponse,
     CitationResponse,
 )
+from backend.app.services.intent_classifier import intent_classifier, IntentType
+from backend.app.services.conversational_service import get_conversational_response, get_llm_conversational_response
 
 
 class RAGService:
@@ -77,7 +79,26 @@ class RAGService:
         top_k: int = 5,
         db: Session = None,
     ) -> ChatResponse:
-        """Execute full grounded RAG pipeline with short citation resolution and validation."""
+        """Execute full grounded RAG pipeline with short citation resolution and validation.
+        
+        Now includes intent classification to route conversational queries
+        to a conversational response path, bypassing the evidence gate.
+        """
+        # 0. Classify intent to route conversational vs document queries
+        intent = intent_classifier.classify(query)
+        
+        # Handle conversational queries with a conversational response
+        if intent.is_conversational and not intent.should_use_rag:
+            return self._generate_conversational_response(
+                query=query,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                intent=intent,
+                db=db,
+            )
+
+        # For document questions and mixed queries, proceed with full RAG pipeline
         # 1. Manage Conversation Session
         if conversation_id:
             conv = db.query(Conversation).filter(
@@ -243,20 +264,6 @@ class RAGService:
             },
         )
         db.add(assistant_msg)
-        db.flush()
-
-        # Persist citations
-        for cit in citations:
-            db_cit = Citation(
-                message_id=assistant_msg.id,
-                chunk_id=cit.chunk_id,
-                document_id=cit.document_id,
-                citation_marker=cit.marker,
-                score=cit.score,
-                snippet=cit.snippet,
-            )
-            db.add(db_cit)
-
         db.commit()
 
         return ChatResponse(
@@ -269,6 +276,93 @@ class RAGService:
             model_used=llm_resp.model,
             provider_used=llm_resp.provider,
             latency_ms=llm_resp.latency_ms,
+        )
+
+    def _generate_conversational_response(
+        self,
+        query: str,
+        workspace_id: str,
+        user_id: str,
+        conversation_id: Optional[str] = None,
+        intent: IntentType = None,
+        db: Session = None,
+    ) -> ChatResponse:
+        """Generate a conversational response without document retrieval.
+        
+        Handles greetings, capability questions, clarifications, social chat,
+        and other conversational interactions without document retrieval.
+        """
+        # Manage Conversation Session
+        if conversation_id:
+            conv = db.query(Conversation).filter(
+                Conversation.id == conversation_id,
+                Conversation.workspace_id == workspace_id,
+                Conversation.user_id == user_id,
+            ).first()
+            if not conv:
+                raise EntityNotFoundError(f"Conversation {conversation_id} not found")
+        else:
+            conv = Conversation(
+                workspace_id=workspace_id,
+                user_id=user_id,
+                title=query[:60].strip(),
+            )
+            db.add(conv)
+            db.flush()
+            conversation_id = conv.id
+
+        # Get conversational response using the conversational service
+        try:
+            # Use the intent_type from the intent classification
+            intent_type_str = intent.intent_type.value if intent else "conversational"
+            response_content = get_conversational_response(query, workspace_id, intent_type=intent.intent_type if intent else None)
+            
+            # If no quick pattern matches, fall back to LLM-based conversational response
+            if response_content is None:
+                try:
+                    response_content = get_llm_conversational_response(query, [])
+                except Exception as e:
+                    logger.warning(f"LLM conversational response generation failed: {e}")
+                    response_content = "I'm here to help! I can search your documents, investigate incidents, analyze technical issues, or answer questions about your documentation. How can I help you today?"
+            elif response_content is None:
+                response_content = "I'm here to help! I can search your documents, investigate incidents, analyze technical issues, or answer questions about your documentation. How can I help you today?"
+        except Exception as e:
+            logger.warning(f"Conversational response generation failed: {e}")
+            response_content = "I'm here to help! I can search your documents, investigate incidents, analyze technical issues, or answer questions about your documentation. How can I help you today?"
+        
+        # Save messages
+        user_msg = Message(
+            conversation_id=conversation_id,
+            role="user",
+            content=query,
+            token_count=len(query) // 4,
+        )
+        db.add(user_msg)
+
+        assistant_msg = Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=response_content,
+            token_count=len(response_content) // 4,
+            msg_metadata={
+                "intent_type": intent.intent_type.value if intent else "conversational",
+                "is_conversational": True,
+                "is_abstention": False,
+            },
+        )
+        db.add(assistant_msg)
+        db.commit()
+
+        return ChatResponse(
+            answer=response_content,
+            conversation_id=conversation_id,
+            message_id=assistant_msg.id,
+            citations=[],
+            is_abstention=False,
+            ungrounded_claims=[],
+            model_used="conversational",
+            provider_used="conversational",
+            latency_ms=1,
         )
 
 
