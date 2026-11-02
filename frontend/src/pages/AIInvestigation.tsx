@@ -18,7 +18,6 @@ import {
   FileText,
   Search,
   ExternalLink,
-  ChevronRight,
   Clock,
   Layers,
   Copy,
@@ -288,26 +287,42 @@ export const AIInvestigation: React.FC = () => {
                 Every factual claim is cross-referenced with your indexed technical documentation, providing verified short citations [c_X].
               </p>
 
-              {/* Starter Buttons */}
-              <div className="w-full mt-6 space-y-2 text-left">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Suggested Investigations
-                </p>
-                {[
-                  "What caused the database connection pool outage in Incident 104?",
-                  "Why is API gateway latency increasing and how is 504 handled?",
-                  "How does enterprise authentication work and what is token TTL?",
-                  "Explain quantum teleportation entanglement protocols.",
-                ].map((q, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSendMessage(q)}
-                    className="w-full p-3 rounded-xl border border-slate-200/80 bg-slate-50/70 hover:bg-blue-50 hover:border-blue-200 text-xs text-slate-700 font-medium transition-colors flex items-center justify-between group"
-                  >
-                    <span>{q}</span>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 shrink-0 ml-2" />
-                  </button>
-                ))}
+              {/* Guidance Pillars */}
+              <div className="w-full mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+                <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/70">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-800">Source Grounding</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-normal">
+                    Factual claims are verified against your documents with clickable [c_X] citations.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/70">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Search className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-800">Hybrid Search</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-normal">
+                    Combines dense semantic vectors and sparse lexical matching via RRF.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/70">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="text-xs font-semibold text-slate-800">Honest Abstention</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-normal">
+                    Abstains safely when verified evidence is absent rather than hallucinating.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center gap-2 text-[11px] text-slate-400">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Ready for queries — enter a technical question or greeting below</span>
               </div>
             </div>
           ) : (

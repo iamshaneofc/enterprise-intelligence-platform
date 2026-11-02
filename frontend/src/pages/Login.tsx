@@ -32,8 +32,28 @@ export const Login: React.FC = () => {
     }
   };
 
-  const handleQuickFillEmail = (demoEmail: string) => {
-    setEmail(demoEmail);
+  const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
+
+  const DEMO_ACCOUNTS = [
+    {
+      id: "architect",
+      role: "Lead Architect",
+      email: "lead.architect@enterprise.io",
+      password: import.meta.env.VITE_DEMO_ARCHITECT_PASSWORD || "ProductionPassword2026!",
+    },
+    {
+      id: "engineer",
+      role: "Senior Engineer",
+      email: "engineer@enterprise.io",
+      password: import.meta.env.VITE_DEMO_ENGINEER_PASSWORD || "Password123!",
+    },
+  ];
+
+  const handleAutofillDemo = (demo: typeof DEMO_ACCOUNTS[0]) => {
+    setEmail(demo.email);
+    setPassword(demo.password);
+    setSelectedDemo(demo.id);
+    setError(null);
   };
 
   return (
@@ -84,28 +104,47 @@ export const Login: React.FC = () => {
           </Button>
         </form>
 
-        {/* Pre-fill email convenience (no hardcoded passwords) */}
+        {/* One-click demo account autofill */}
         <div className="mt-6 pt-6 border-t border-slate-100">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 text-center">
             Pre-fill Account Email
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickFillEmail("lead.architect@enterprise.io")}
-              className="p-2 text-left rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors text-[11px]"
-            >
-              <span className="font-semibold text-slate-700 block">Lead Architect</span>
-              <span className="text-slate-400 text-[10px]">lead.architect@enterprise.io</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFillEmail("engineer@enterprise.io")}
-              className="p-2 text-left rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors text-[11px]"
-            >
-              <span className="font-semibold text-slate-700 block">Senior Engineer</span>
-              <span className="text-slate-400 text-[10px]">engineer@enterprise.io</span>
-            </button>
+            {DEMO_ACCOUNTS.map((demo) => {
+              const isSelected = selectedDemo === demo.id && email === demo.email;
+              return (
+                <button
+                  key={demo.id}
+                  type="button"
+                  onClick={() => handleAutofillDemo(demo)}
+                  className={`p-2.5 text-left rounded-xl border transition-all duration-150 cursor-pointer text-[11px] group active:scale-[0.98] ${
+                    isSelected
+                      ? "border-blue-500 bg-blue-50/70 shadow-xs ring-2 ring-blue-500/20"
+                      : "border-slate-200 bg-slate-50/80 hover:bg-slate-100 hover:border-slate-300 hover:shadow-xs"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`font-semibold block ${
+                        isSelected ? "text-blue-700" : "text-slate-700 group-hover:text-slate-900"
+                      }`}
+                    >
+                      {demo.role}
+                    </span>
+                    {isSelected && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                    )}
+                  </div>
+                  <span
+                    className={`block text-[10px] truncate mt-0.5 ${
+                      isSelected ? "text-blue-600/80" : "text-slate-400 group-hover:text-slate-500"
+                    }`}
+                  >
+                    {demo.email}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
