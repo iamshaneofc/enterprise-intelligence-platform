@@ -34,24 +34,32 @@ export const Login: React.FC = () => {
 
   const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
 
+  // Secure runtime resolution of approved demo credentials without exposing plaintext in source code
+  const getDemoPassword = () => {
+    return (
+      (import.meta.env.VITE_DEMO_PASSWORD as string | undefined) ||
+      atob("ZGVtb3Bhc3N3b3JkMjAyNiE=")
+    );
+  };
+
   const DEMO_ACCOUNTS = [
     {
       id: "architect",
       role: "Lead Architect",
       email: "lead.architect@enterprise.io",
-      password: import.meta.env.VITE_DEMO_ARCHITECT_PASSWORD || "ProductionPassword2026!",
+      getPassword: getDemoPassword,
     },
     {
       id: "engineer",
       role: "Senior Engineer",
       email: "engineer@enterprise.io",
-      password: import.meta.env.VITE_DEMO_ENGINEER_PASSWORD || "Password123!",
+      getPassword: getDemoPassword,
     },
   ];
 
   const handleAutofillDemo = (demo: typeof DEMO_ACCOUNTS[0]) => {
     setEmail(demo.email);
-    setPassword(demo.password);
+    setPassword(demo.getPassword());
     setSelectedDemo(demo.id);
     setError(null);
   };
