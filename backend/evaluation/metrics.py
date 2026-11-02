@@ -1,5 +1,5 @@
 """Evaluation metrics for RAG system quality assessment."""
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 from dataclasses import dataclass
 from collections import Counter
 import json
