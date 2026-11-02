@@ -2,7 +2,7 @@ import os
 from typing import List, Optional, Dict
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import TypedDict
+from typing_extensions import TypedDict
 
 
 class ModelPricing(TypedDict):
