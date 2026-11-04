@@ -28,6 +28,13 @@ The Engineering Intelligence Platform solves this through:
 6. **Empirical Evaluation Benchmark:** A 46-question golden evaluation suite measuring retrieval precision, context recall, grounding faithfulness, and abstention accuracy.
 7. **End-to-End Observability:** Full telemetry logging in PostgreSQL (`llm_logs`) and native Langfuse v5 request tracing.
 
+### Live Production Interface
+
+| Multi-Hop Grounded Synthesis with Citations (`[c_1]`, `[c_2]`) | Honest Model Abstention via Evidence Gate |
+| :---: | :---: |
+| ![Grounded Incident Chat](docs/images/eip_live_grounded_chat.png) | ![Honest Model Abstention](docs/images/eip_live_model_abstention.png) |
+| *Synthesizing causal incident chains with verified source citations* | *Evidence sufficiency gate preventing hallucinations on out-of-domain queries* |
+
 ---
 
 ## 2. Implemented Features & Modules
