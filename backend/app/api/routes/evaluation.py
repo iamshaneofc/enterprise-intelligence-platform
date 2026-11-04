@@ -1,9 +1,11 @@
 """Evaluation API endpoints."""
-from typing import Optional
+import os
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import settings
 from backend.app.db.session import get_db
 from backend.app.models.user import User
 from backend.app.api.dependencies import get_current_user, verify_workspace_access
@@ -16,8 +18,8 @@ class EvaluationRequest(BaseModel):
     """Request to trigger an evaluation run."""
     dataset_path: Optional[str] = Field(default=None, description="Path to evaluation dataset (defaults to golden dataset)")
     top_k: int = Field(default=5, ge=1, le=20, description="Number of retrieval results per question")
-    use_fake_llm: bool = Field(default=True, description="Use fake LLM provider for deterministic results")
-    use_fake_embeddings: bool = Field(default=True, description="Use fake embedding provider for deterministic results")
+    use_fake_llm: bool = Field(default=False, description="Use fake LLM provider for deterministic results (disabled in production)")
+    use_fake_embeddings: bool = Field(default=False, description="Use fake embedding provider for deterministic results (disabled in production)")
     output_path: Optional[str] = Field(default=None, description="Optional path to save results")
 
 
@@ -75,6 +77,45 @@ async def run_evaluation_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Evaluation failed: {str(e)}"
         )
+
+
+@router.get("/provider-status")
+async def get_provider_status(
+    workspace_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Inspect the current runtime LLM and Embedding provider state."""
+    verify_workspace_access(workspace_id, current_user, db)
+    return {
+        "use_fake_llm": settings.USE_FAKE_LLM,
+        "use_fake_embeddings": settings.USE_FAKE_EMBEDDINGS,
+        "env_use_fake_llm": os.environ.get("USE_FAKE_LLM"),
+        "env_use_fake_embeddings": os.environ.get("USE_FAKE_EMBEDDINGS"),
+        "primary_llm_provider": settings.PRIMARY_LLM_PROVIDER,
+        "primary_llm_model": settings.PRIMARY_LLM_MODEL,
+        "environment": settings.ENVIRONMENT,
+    }
+
+
+@router.post("/reset-providers")
+async def reset_providers(
+    workspace_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Administrative reset: restore real LLM and Embedding providers in process memory."""
+    verify_workspace_access(workspace_id, current_user, db)
+    settings.USE_FAKE_LLM = False
+    settings.USE_FAKE_EMBEDDINGS = False
+    os.environ["USE_FAKE_LLM"] = "false"
+    os.environ["USE_FAKE_EMBEDDINGS"] = "false"
+    return {
+        "status": "success",
+        "message": "Runtime providers successfully restored to production mode (real LLM and embeddings).",
+        "use_fake_llm": settings.USE_FAKE_LLM,
+        "use_fake_embeddings": settings.USE_FAKE_EMBEDDINGS,
+    }
 
 
 @router.get("/results", response_model=EvaluationStatusResponse)

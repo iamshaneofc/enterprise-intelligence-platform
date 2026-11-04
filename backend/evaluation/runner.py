@@ -348,6 +348,11 @@ def run_evaluation(
     Returns:
         Dict with aggregate and per-question results
     """
+    # In production, never allow fake LLM or fake embeddings to poison the system
+    if settings.ENVIRONMENT == "production":
+        use_fake_llm = False
+        use_fake_embeddings = False
+
     config = EvaluationConfig(
         dataset_path=dataset_path or "backend/tests/fixtures/golden_evaluation_dataset.jsonl",
         use_fake_llm=use_fake_llm,
@@ -356,16 +361,42 @@ def run_evaluation(
         output_path=output_path,
     )
     
-    # Override providers for fake mode
-    if use_fake_llm:
-        os.environ["USE_FAKE_LLM"] = "true"
-        settings.USE_FAKE_LLM = True
-    if use_fake_embeddings:
-        os.environ["USE_FAKE_EMBEDDINGS"] = "true"
-        settings.USE_FAKE_EMBEDDINGS = True
-    
-    runner = EvaluationRunner(config)
-    return runner.run_evaluation()
+    # Preserve original settings to guarantee restoration
+    original_fake_llm = settings.USE_FAKE_LLM
+    original_fake_embeddings = settings.USE_FAKE_EMBEDDINGS
+    original_env_fake_llm = os.environ.get("USE_FAKE_LLM")
+    original_env_fake_embeddings = os.environ.get("USE_FAKE_EMBEDDINGS")
+
+    try:
+        # Override providers for fake mode
+        if use_fake_llm:
+            os.environ["USE_FAKE_LLM"] = "true"
+            settings.USE_FAKE_LLM = True
+        else:
+            os.environ["USE_FAKE_LLM"] = "false"
+            settings.USE_FAKE_LLM = False
+
+        if use_fake_embeddings:
+            os.environ["USE_FAKE_EMBEDDINGS"] = "true"
+            settings.USE_FAKE_EMBEDDINGS = True
+        else:
+            os.environ["USE_FAKE_EMBEDDINGS"] = "false"
+            settings.USE_FAKE_EMBEDDINGS = False
+        
+        runner = EvaluationRunner(config)
+        return runner.run_evaluation()
+    finally:
+        # Guarantee restoration of previous settings
+        settings.USE_FAKE_LLM = original_fake_llm
+        settings.USE_FAKE_EMBEDDINGS = original_fake_embeddings
+        if original_env_fake_llm is not None:
+            os.environ["USE_FAKE_LLM"] = original_env_fake_llm
+        elif "USE_FAKE_LLM" in os.environ:
+            del os.environ["USE_FAKE_LLM"]
+        if original_env_fake_embeddings is not None:
+            os.environ["USE_FAKE_EMBEDDINGS"] = original_env_fake_embeddings
+        elif "USE_FAKE_EMBEDDINGS" in os.environ:
+            del os.environ["USE_FAKE_EMBEDDINGS"]
 
 
 if __name__ == "__main__":
