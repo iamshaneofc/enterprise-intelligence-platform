@@ -2,7 +2,9 @@
 
 > **Enterprise Document Intelligence • Grounded RAG • Autonomous Multi-Tool Agent • Systematic Evaluation**  
 > **Repository:** [https://github.com/iamshaneofc/enterprise-intelligence-platform](https://github.com/iamshaneofc/enterprise-intelligence-platform)  
-> **Current Status:** `IMPLEMENTED & VERIFIED` (Backend Unit & Integration Test Suite • Frontend Vitest Test Suite • Production TypeScript Build • 46-Question Golden Evaluation Dataset • Backend /health & /ready Verified on AWS EC2 Production • Frontend Deployed on Vercel)
+> **Live Production URL (Vercel):** [https://enterprise-intelligence-platform-dun.vercel.app](https://enterprise-intelligence-platform-dun.vercel.app)  
+> **Live Production Backend (AWS EC2):** `https://treaty-finest-equality-dot.trycloudflare.com` (proxied to `13.207.43.212:8000`)  
+> **Current Status:** `DEPLOYED, IMPLEMENTED & VERIFIED` (Full AWS RDS & EC2 Cloud Deployment • Vercel Frontend • Unit & Integration Test Suite • 46-Question Golden Evaluation Benchmark)
 
 ---
 
@@ -58,9 +60,9 @@ The Engineering Intelligence Platform solves this through:
 | Primary Database         | PostgreSQL 16 + pgvector     | Unified relational metadata & vectors  |
 | Development Fallback DB  | SQLite (JSON serialized)     | Fast, zero-dependency unit testing     |
 | Database Migrations      | Alembic                      | Version-controlled schema evolutions   |
-| Primary LLM Provider     | Anthropic Claude 3.5 Sonnet  | Complex reasoning & agent tool calling |
-| Secondary Fallback LLM   | OpenAI GPT-4o / 4o-mini      | Circuit-breaker failover resilience    |
-| Embedding Model          | OpenAI text-embedding-3-small| 1536-dimensional vector representations|
+| Primary LLM Provider     | OpenAI GPT-4o (Production)    | Grounded RAG synthesis & agent reasoning |
+| Fallback LLM Provider    | Anthropic Claude 3.5 Sonnet   | Circuit-breaker failover resilience    |
+| Embedding Model          | OpenAI text-embedding-3-small | 1536-dimensional vector representations|
 | Document Parsers         | PyMuPDF (fitz), CSV, MD, TXT | Multi-format technical text extraction |
 | Observability & Tracing  | Langfuse v5 + SQLAlchemy Logs| Request-level tracing & token telemetry|
 | Containerization         | Docker & Docker Compose      | Multi-service containerized deployment |
@@ -343,55 +345,63 @@ Evaluation results are computed using formal Information Retrieval formulations 
 
 ## 8. 5-Minute Demonstration Walkthrough
 
-Follow this sequence to test all platform capabilities:
+Follow this sequence to test all platform capabilities (available both locally and on the live [Production Vercel Frontend](https://enterprise-intelligence-platform-dun.vercel.app)):
 
-1. **Authentication:** Open `http://127.0.0.1:3000`. Register a new account or log in with test credentials.
-2. **Document Management:** Navigate to **Documents**. Upload an incident postmortem (e.g., from `backend/tests/fixtures/synthetic_docs/incident_104_postmortem.md`). Watch status transition from `PENDING` to `INDEXED`. Click **View Chunks** to open the Chunk Explorer modal.
-3. **Evidence-Grounded Chat:** Open **Chat**. Ask: *"What was the start time and root cause of Incident 104?"* Observe the response with inline citation markers (`[c_0]`). Click the citation badge to inspect the source passage in the side drawer.
-4. **Honest Abstention:** Ask an out-of-domain question: *"Explain quantum teleportation entanglement protocols."* The `EvidenceSufficiencyGate` detects $< 25\%$ coverage and displays an amber **Insufficient Evidence** alert rather than hallucinating.
+1. **Authentication:** Open the login page. Use the one-click demo account buttons (`Lead Architect` or `Senior Engineer`, password `demopassword2026!`), or create your own workspace account.
+2. **Document Management:** Navigate to **Documents**. Upload an incident postmortem (e.g., from `backend/tests/fixtures/synthetic_docs/incident_104_postmortem.md` or a PDF runbook). Watch status transition from `PENDING` to `INDEXED`. Click **View Chunks** to inspect chunk boundaries, tokens, and metadata.
+3. **Evidence-Grounded Chat:** Open **Chat**. Ask an investigative question: *"How did the cache configuration change affect database CPU and p95 latency?"* Observe the streaming response with verified citation markers (`[c_0]`). Click the citation badge to inspect the exact source passage in the side drawer.
+4. **Honest Abstention:** Ask an unanswerable or out-of-domain question: *"What was the monthly cloud infrastructure bill for this service?"* The `EvidenceSufficiencyGate` detects insufficient evidence and returns an honest, structured abstention alert rather than fabricating numbers.
 5. **Autonomous Investigation:** Open **Agent Studio**. Enter: *"Investigate recurring database connection failures across all incident reports and compile an executive report."* Observe the live execution timeline as the agent calls `Knowledge Base Search`, pipes results to `Document Analysis`, and outputs a formatted Markdown report via `Structured Report Generation`.
-6. **Live Evaluation Dashboard:** Open **Evaluation**. Click **Run Evaluation Benchmark** to execute all 46 golden questions live against the backend, rendering real aggregate metrics and category breakdowns.
+6. **Live Evaluation Dashboard:** Open **Evaluation**. Click **Run Evaluation Benchmark** to execute the golden evaluation suite live against the backend, rendering real aggregate metrics and category breakdowns with zero disruption to the production environment.
 7. **System Diagnostics:** Open **Settings** to inspect active workspace configuration, token telemetry, and health check statuses.
 
 ---
 
-## 9. Deployment References & Cloud Readiness
+## 9. Production Deployment & Cloud Architecture
 
 ### Production Deployment Architecture
 
 ```
-Vercel Frontend  →  FastAPI Backend (AWS EC2)  →  PostgreSQL/RDS with pgvector
+Vercel Frontend (HTTPS)  ──►  Cloudflare Tunnel  ──►  FastAPI Backend (AWS EC2 i-08a9c6aff142a77d4)  ──►  AWS RDS PostgreSQL 16 (pgvector)
 ```
 
-| Component | Deployment | Endpoint | Status |
+| Component | Cloud Provider & Identifier | Production Endpoint | Live Status |
 | :--- | :--- | :--- | :--- |
-| **Frontend SPA** | Vercel | https://enterprise-intelligence-platform-dun.vercel.app | Deployed, serving React SPA |
-| **Backend API** | AWS EC2 | `http://13.207.43.212/health` | 200 OK, `environment=production` |
-| **Backend Readiness** | AWS EC2 | `http://13.207.43.212/ready` | 200 OK, `database=connected` |
-| **Database** | PostgreSQL/RDS with pgvector | — | Backend connects to RDS in production; SQLite fallback for local testing |
+| **Frontend SPA** | Vercel (Edge Network) | [enterprise-intelligence-platform-dun.vercel.app](https://enterprise-intelligence-platform-dun.vercel.app) | `200 OK`, Live React 18 SPA |
+| **Backend API Gateway** | Cloudflare Tunnel (HTTPS) | `https://treaty-finest-equality-dot.trycloudflare.com` | `200 OK`, Proxied to EC2 |
+| **Backend Host** | AWS EC2 `i-08a9c6aff142a77d4` (`ap-south-1`) | `http://13.207.43.212/health` | `200 OK`, `environment=production` |
+| **Backend Readiness** | AWS EC2 `i-08a9c6aff142a77d4` (`ap-south-1`) | `http://13.207.43.212/ready` | `200 OK`, `database=connected` |
+| **Primary Database** | AWS RDS PostgreSQL 16 + `pgvector` | Internal VPC Endpoint | Connected, Relational + Vector store |
+| **Active LLM Provider**| OpenAI `gpt-4o` | Managed API | Active (`USE_FAKE_LLM=false`) |
+| **Active Embeddings**  | OpenAI `text-embedding-3-small` (1536-dim) | Managed API | Active (`USE_FAKE_EMBEDDINGS=false`) |
 
-### Deployment Details
+### Demo Accounts for Live Verification
 
-- **Frontend:** Deployed on Vercel at https://enterprise-intelligence-platform-dun.vercel.app. The frontend is configured with `VITE_API_BASE_URL` pointing to the backend API, with CORS preflight verified from the Vercel origin.
-- **Backend:** Deployed on AWS EC2. Health (`/health`) and readiness (`/ready`) endpoints return HTTP 200 with production environment and database connectivity confirmed.
-- **No secrets committed:** Zero private credentials are in git. Production requires live `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ENVIRONMENT=production`, and a strong 32+ character `SECRET_KEY` (via Vercel Environment Variables / AWS Secrets Manager).
+The deployed application includes two pre-configured enterprise demo accounts with one-click credential autofill on the login page:
 
-### Containerization
+| Role | Work Email | Password | Access Level |
+| :--- | :--- | :--- | :--- |
+| **Lead Architect** | `lead.architect@enterprise.io` | `demopassword2026!` | Workspace Admin (Full document ingestion, agent studio, evaluation) |
+| **Senior Engineer** | `engineer@enterprise.io` | `demopassword2026!` | Engineer (Document search, chat investigation, chunk exploration) |
 
-- **Containerization:** The repository is fully containerized via `docker-compose.yml` for local development and Docker deployment.
-- **Database Portability:** Implemented with `VectorType` abstraction, supporting seamless deployment to cloud-managed PostgreSQL with `pgvector` (AWS RDS, Supabase, Neon).
-- **Cloud Deployment Status:** Verified in local and Docker container environments. Public cloud hosting (e.g. AWS ECS / Render / Vercel) requires user-managed cloud account provisioning and credentials.
+### Security & Non-Root Container Execution
+
+- **Zero committed secrets:** All API keys and connection strings are managed securely via AWS EC2 environment configuration and Vercel project environment variables.
+- **Unprivileged Container User:** The production Docker container executes as non-root `appuser` (UID 1000) with dependencies isolated in `/opt/venv`.
+- **CORS Hardening:** Production origins are strictly restricted to the verified Vercel frontend domain.
+
 ---
 
 ## 10. Recent Engineering Improvements
 
-The following improvements have been implemented in the current codebase:
+The following production hardening and architectural improvements are active in the current deployment:
 
-- **Information Retrieval metric reformulation:** Formal IR metrics (`compute_ir_metrics`) in `backend/evaluation/metrics.py` provide TREC-compliant Precision@K, Recall@K, MRR, and NDCG@K with logarithmic discounting and zero-division handling.
-- **Evaluation runner improvements:** `backend/evaluation/runner.py` passes `ground_truth_context` to question evaluation and correctly configures fake-mode evaluation settings.
-- **Evidence gate numerical conflict remediation:** `backend/app/rag/evidence_gate.py` excludes incident IDs, dates, clock times, and HTTP status codes from false-positive numerical conflict detection. Conflicts trigger only when numbers bind to identical metrics and the query specifically asks about that metric; genuine metric contradictions remain protected.
-- **Workspace authorization:** Workspace isolation authorization enforced on the `get_workspace` endpoint in `backend/app/api/routes/workspaces.py`.
-- **Production deployment:** Backend deployed on AWS EC2 with `/health` and `/ready` endpoints verified. Frontend deployed on Vercel with CORS configured for the Vercel origin.
+- **Evaluation Runtime Isolation:** Remediated runtime settings mutation in `backend/evaluation/runner.py`. Benchmark evaluations now run within strict `try...finally` boundaries, and fake providers are strictly disabled in production (`settings.ENVIRONMENT == "production"`), preventing test runs from altering live chat providers.
+- **Runtime Provider Diagnostics:** Implemented `GET /workspaces/{id}/evaluation/provider-status` and `POST /workspaces/{id}/evaluation/reset-providers` for transparent verification and administrative resetting of LLM and embedding states in memory.
+- **Conversational & Overview Query Handling:** Integrated intent classification in `backend/app/services/intent_classifier.py` and calibrated `EvidenceSufficiencyGate` in `backend/app/rag/evidence_gate.py` to seamlessly route conversational messages and broad technical inquiries without false abstentions.
+- **Dynamic AI Investigation Empty State:** Replaced static suggested questions with a clean, 3-pillar guidance empty state that encourages organic inquiries against ingested engineering documents.
+- **Information Retrieval Metric Reformulation:** Implemented TREC-compliant Precision@K, Recall@K, MRR, and NDCG@K metrics in `backend/evaluation/metrics.py` with logarithmic rank discounting.
+- **Evidence Gate Numerical Conflict Calibration:** Excluded incident IDs, dates, timestamps, and HTTP status codes from false-positive conflict detection, isolating conflicts to genuine metric contradictions.
 
 ---
 
