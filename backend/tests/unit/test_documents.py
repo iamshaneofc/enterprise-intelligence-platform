@@ -90,6 +90,29 @@ def test_get_document_chunks(client: TestClient, auth_headers: dict):
     assert chunks[0]["chunk_index"] == 0
 
 
+def test_download_document(client: TestClient, auth_headers: dict):
+    ws_id = get_default_workspace_id(client, auth_headers)
+    content = b"# Architecture Download Test\n\nOriginal file persistence verification."
+
+    files = {"file": ("download_test.md", io.BytesIO(content), "text/markdown")}
+    upload_resp = client.post(
+        f"/api/v1/workspaces/{ws_id}/documents/upload",
+        headers=auth_headers,
+        files=files,
+    )
+    assert upload_resp.status_code == 201
+    doc_id = upload_resp.json()["document"]["id"]
+
+    download_resp = client.get(
+        f"/api/v1/workspaces/{ws_id}/documents/{doc_id}/download",
+        headers=auth_headers,
+    )
+    assert download_resp.status_code == 200
+    assert download_resp.content == content
+    assert "attachment" in download_resp.headers.get("content-disposition", "")
+    assert "download_test.md" in download_resp.headers.get("content-disposition", "")
+
+
 def test_delete_document(client: TestClient, auth_headers: dict):
     ws_id = get_default_workspace_id(client, auth_headers)
     content = b"Temporary document to be deleted."

@@ -1,6 +1,8 @@
 """Document management and upload endpoints."""
+import os
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
@@ -98,6 +100,64 @@ def get_document_chunks(
     if doc.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found in workspace")
     return document_service.get_document_chunks(document_id, db)
+
+
+@router.get("/{document_id}/download")
+def download_document(
+    workspace_id: str,
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Download the original uploaded document file."""
+    verify_workspace_access(workspace_id, current_user, db)
+    doc = document_service.get_document(document_id, db)
+    if doc.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found in workspace")
+
+    file_path = doc.file_path
+    if not file_path or not os.path.exists(file_path):
+        # Fallback check relative to settings.STORAGE_DIR
+        candidate = os.path.join(settings.STORAGE_DIR, workspace_id, os.path.basename(file_path or doc.filename))
+        if os.path.exists(candidate):
+            file_path = candidate
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Original document file not found on disk at {doc.file_path}"
+            )
+
+    ext = os.path.splitext(doc.filename)[1].lower()
+    media_types = {
+        ".pdf": "application/pdf",
+        ".md": "text/markdown",
+        ".txt": "text/plain",
+        ".csv": "text/csv",
+        ".json": "application/json",
+    }
+    media_type = media_types.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=file_path,
+        filename=doc.filename,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
+    )
+
+
+@router.post("/{document_id}/reindex", response_model=DocumentResponse)
+def reindex_document(
+    workspace_id: str,
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-parse, re-chunk, and re-embed an existing document using the configured embedding provider."""
+    verify_workspace_access(workspace_id, current_user, db)
+    doc = document_service.get_document(document_id, db)
+    if doc.workspace_id != workspace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found in workspace")
+    return document_service.reindex_document(document_id, db)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

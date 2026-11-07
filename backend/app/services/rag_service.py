@@ -1,11 +1,11 @@
 """RAG orchestration service coordinating retrieval, LLM synthesis, grounding, and citations."""
 import uuid
-from typing import Optional
+from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session
 
 from backend.app.core.logging import logger
 from backend.app.core.exceptions import EntityNotFoundError
-from backend.app.retrieval.hybrid import hybrid_retriever
+from backend.app.retrieval.hybrid import hybrid_retriever, RetrievedChunk
 from backend.app.rag.prompt_templates import RAG_SYSTEM_PROMPT, build_rag_user_prompt
 from backend.app.rag.citations import CitationMap
 from backend.app.rag.grounding import (
@@ -14,7 +14,7 @@ from backend.app.rag.grounding import (
     verify_claim_grounding,
     strip_evidence_echo,
 )
-from backend.app.rag.evidence_gate import evidence_sufficiency_gate, EvidenceDecision
+from backend.app.rag.evidence_gate import evidence_sufficiency_gate, EvidenceDecision, EvidenceAssessment
 from backend.app.observability.langfuse_tracer import observe
 from backend.app.llm.base import LLMMessage
 from backend.app.llm.router import llm_router
@@ -131,8 +131,15 @@ class RAGService:
         assessment = evidence_sufficiency_gate.assess_evidence(query, retrieved_chunks)
 
         if assessment.decision == EvidenceDecision.INSUFFICIENT:
-            # Deterministic Pre-Generation Abstention: short-circuit without calling LLM
-            abstain_content = f"ABSTAIN: insufficient_evidence. {assessment.rationale}"
+            # Generate reasoned, helpful engineering explanation for abstention
+            abstain_content, model_used, provider_used, latency = self._generate_explanatory_abstention(
+                query=query,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                assessment=assessment,
+                retrieved_chunks=retrieved_chunks,
+                db=db,
+            )
             user_msg = Message(
                 conversation_id=conversation_id,
                 role="user",
@@ -163,9 +170,9 @@ class RAGService:
                 citations=[],
                 is_abstention=True,
                 ungrounded_claims=[],
-                model_used="evidence_sufficiency_gate",
-                provider_used="system",
-                latency_ms=1,
+                model_used=model_used,
+                provider_used=provider_used,
+                latency_ms=latency,
             )
 
         if assessment.decision == EvidenceDecision.CONFLICTING and assessment.conflict:
@@ -364,6 +371,81 @@ class RAGService:
             provider_used="conversational",
             latency_ms=1,
         )
+
+    def _generate_explanatory_abstention(
+        self,
+        query: str,
+        workspace_id: str,
+        user_id: str,
+        assessment: EvidenceAssessment,
+        retrieved_chunks: List[RetrievedChunk],
+        db: Session,
+    ) -> Tuple[str, str, str, int]:
+        """
+        Generate a helpful, reasoned engineering explanation for model abstention.
+        Returns: (abstain_content, model_used, provider_used, latency_ms)
+        """
+        import time
+        start_t = time.perf_counter()
+
+        # Build candidate excerpts context
+        doc_summaries = []
+        seen_docs = set()
+        for r in retrieved_chunks[:3]:
+            title = r.document_title or "Indexed Document"
+            snippet = r.chunk.content.strip().replace("\n", " ")[:200]
+            if title not in seen_docs:
+                seen_docs.add(title)
+                doc_summaries.append(f"- {title}: \"{snippet}...\"")
+
+        snippets_text = "\n".join(doc_summaries) if doc_summaries else "No related documents or chunks found in this workspace."
+
+        abstention_prompt = (
+            f"User Question: {query}\n\n"
+            f"Retrieved Workspace Documentation Excerpts:\n{snippets_text}\n\n"
+            f"Task: The evidence sufficiency check determined that the indexed documents in the workspace do not contain verified technical evidence to reliably answer this question.\n"
+            f"Generate a professional, reasoned engineering explanation following these strict guidelines:\n"
+            f"1. You MUST start your response with 'ABSTAIN: insufficient_evidence.' on its own line.\n"
+            f"2. Clearly explain that the indexed documents in this workspace do not contain verified technical evidence regarding '{query}'.\n"
+            f"3. Note specifically what topic or technical concepts were queried.\n"
+            f"4. If workspace excerpts cover different topics (e.g., API methods or general configurations), briefly note what is available in the workspace versus what is missing.\n"
+            f"5. Suggest uploading the relevant technical documentation, runbook, architecture specification, or postmortem to enable grounded answers.\n"
+            f"6. Do NOT invent facts or hallucinate answers. Keep the response polite, technical, and concise (under 120 words)."
+        )
+
+        try:
+            llm_resp = llm_router.generate(
+                messages=[
+                    LLMMessage(
+                        role="system",
+                        content=(
+                            "You are an advanced Engineering Intelligence Platform AI Assistant. "
+                            "When workspace evidence is insufficient, you provide polite, helpful, "
+                            "and strictly grounded engineering explanations of what is missing, "
+                            "always starting with 'ABSTAIN: insufficient_evidence.'"
+                        ),
+                    ),
+                    LLMMessage(role="user", content=abstention_prompt),
+                ],
+                workspace_id=workspace_id,
+                user_id=user_id,
+                db=db,
+            )
+            content = llm_resp.content.strip()
+            if not content.startswith("ABSTAIN: insufficient_evidence"):
+                content = f"ABSTAIN: insufficient_evidence.\n\n{content}"
+            latency = int((time.perf_counter() - start_t) * 1000)
+            return content, "evidence_sufficiency_gate", "system", latency
+        except Exception as exc:
+            logger.warning(f"Failed to generate LLM abstention explanation: {exc}. Using deterministic fallback.")
+            latency = int((time.perf_counter() - start_t) * 1000)
+            fallback = (
+                f"ABSTAIN: insufficient_evidence.\n\n"
+                f"The indexed documents in this workspace do not contain verified technical evidence regarding '{query}'. "
+                f"A search across the repository did not yield verified technical facts, specifications, or runbook records answering this inquiry.\n\n"
+                f"To answer this question, please upload the relevant architecture specification, runbook, or incident postmortem to the workspace."
+            )
+            return fallback, "evidence_sufficiency_gate", "system", latency
 
 
 rag_service = RAGService()

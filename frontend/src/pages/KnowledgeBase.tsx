@@ -25,6 +25,7 @@ import {
   FileSpreadsheet,
   FileCode,
   Sparkles,
+  Download,
 } from "lucide-react";
 
 export const KnowledgeBase: React.FC = () => {
@@ -54,6 +55,7 @@ export const KnowledgeBase: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [docToDelete, setDocToDelete] = useState<DocumentItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
   const loadDocuments = async () => {
     if (!currentWorkspace) return;
@@ -133,6 +135,19 @@ export const KnowledgeBase: React.FC = () => {
       console.error("Failed to delete document:", err);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleDownloadDocument = async (doc: DocumentItem) => {
+    if (!currentWorkspace) return;
+    try {
+      setDownloadingDocId(doc.id);
+      await documentService.downloadDocument(currentWorkspace.id, doc.id, doc.filename);
+    } catch (err: any) {
+      console.error("Failed to download document:", err);
+      alert(err.message || "Failed to download document");
+    } finally {
+      setDownloadingDocId(null);
     }
   };
 
@@ -300,6 +315,14 @@ export const KnowledgeBase: React.FC = () => {
                       <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           <button
+                            onClick={() => handleDownloadDocument(doc)}
+                            title="Download Original File"
+                            disabled={downloadingDocId === doc.id}
+                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors disabled:opacity-50"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handleOpenDocDetails(doc)}
                             title="Inspect Chunks"
                             className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
@@ -428,10 +451,23 @@ export const KnowledgeBase: React.FC = () => {
 
             {/* Chunks List */}
             <div>
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-blue-600" />
-                <span>Indexed Vector Chunks</span>
-              </h4>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Indexed Vector Chunks</span>
+                </h4>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleDownloadDocument(selectedDoc)}
+                  disabled={downloadingDocId === selectedDoc.id}
+                  className="flex items-center gap-1.5 text-xs text-slate-700 hover:text-emerald-600 hover:bg-emerald-50"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{downloadingDocId === selectedDoc.id ? "Downloading..." : "Download Original File"}</span>
+                </Button>
+              </div>
 
               {isLoadingChunks ? (
                 <div className="p-8 text-center text-xs text-slate-400">Loading chunks...</div>

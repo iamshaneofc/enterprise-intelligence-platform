@@ -1,7 +1,8 @@
 """Vector and Hybrid Search Repository with dual PostgreSQL pgvector and SQLite support."""
 import math
+import re
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Set
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -9,6 +10,31 @@ from backend.app.models.chunk import Chunk
 from backend.app.models.document import Document
 from backend.app.core.logging import logger
 from backend.app.core.config import settings
+
+_LEXICAL_STOPWORDS: Set[str] = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and",
+    "any", "are", "aren't", "as", "at", "be", "because", "been", "before", "being",
+    "below", "between", "both", "but", "by", "can", "can't", "cannot", "could",
+    "couldn't", "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down",
+    "during", "each", "few", "for", "from", "further", "had", "hadn't", "has",
+    "hasn't", "have", "haven't", "having", "he", "her", "here", "hers", "him",
+    "his", "how", "i", "if", "in", "into", "is", "isn't", "it", "its", "just",
+    "me", "more", "most", "my", "myself", "no", "nor", "not", "of", "off", "on",
+    "once", "only", "or", "other", "our", "ours", "out", "over", "own", "same",
+    "should", "so", "some", "such", "than", "that", "the", "their", "theirs", "them",
+    "then", "there", "these", "they", "this", "those", "through", "to", "too",
+    "under", "until", "up", "very", "was", "wasn't", "we", "were", "what", "when",
+    "where", "which", "while", "who", "whom", "why", "will", "with", "would",
+    "you", "your", "yours", "tell", "give", "please", "know", "show", "find"
+}
+
+
+def _tokenize_text(text: str) -> List[str]:
+    """Extract alphanumeric, underscore, and hyphen tokens normalized to lower case."""
+    if not text:
+        return []
+    return re.findall(r"\b[a-zA-Z0-9_\-]{2,}\b", text.lower())
+
 
 
 class VectorRepository:
@@ -106,9 +132,11 @@ class VectorRepository:
         Execute sparse lexical BM25-style keyword search over chunk contents.
         Returns list of (Chunk, bm25_score) sorted descending.
         """
-        terms = [t.lower() for t in query.split() if len(t) > 2]
+        raw_tokens = _tokenize_text(query)
+        filtered_terms = [t for t in raw_tokens if t not in _LEXICAL_STOPWORDS and len(t) > 2]
+        terms = filtered_terms if filtered_terms else raw_tokens
         if not terms:
-            terms = [query.lower()]
+            terms = [query.lower().strip()]
 
         base_query = db.query(Chunk).filter(Chunk.workspace_id == workspace_id)
         if document_id:
@@ -127,7 +155,7 @@ class VectorRepository:
         avg_doc_len = 0.0
 
         for ch in chunks:
-            words = ch.content.lower().split()
+            words = _tokenize_text(ch.content)
             chunk_words_list.append(words)
             avg_doc_len += len(words)
             word_set = set(words)

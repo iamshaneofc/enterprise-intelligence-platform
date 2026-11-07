@@ -24,7 +24,7 @@ if (!rawBaseUrl && !import.meta.env.DEV) {
   );
 }
 
-const API_BASE_URL = (rawBaseUrl || "").replace(/\/+$/, "");
+export const API_BASE_URL = (rawBaseUrl || "").replace(/\/+$/, "");
 
 export class APIError extends Error {
   status: number;

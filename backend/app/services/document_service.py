@@ -138,6 +138,66 @@ class DocumentService:
         db.commit()
         return True
 
+    def reindex_document(self, document_id: str, db: Session) -> Document:
+        """Re-parse, re-chunk, and re-embed an existing document from disk using the active embedding provider."""
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            raise EntityNotFoundError(f"Document {document_id} not found")
+
+        file_path = doc.file_path
+        if not os.path.exists(file_path):
+            from backend.app.core.config import settings
+            candidate = os.path.join(settings.STORAGE_DIR, doc.workspace_id, os.path.basename(file_path or doc.filename))
+            if os.path.exists(candidate):
+                file_path = candidate
+            else:
+                raise DocumentProcessingError(f"Original document file not found on disk at {doc.file_path}")
+
+        try:
+            # 1. Re-parse
+            blocks = DocumentParser.parse(file_path, doc.file_type)
+
+            # 2. Re-chunk
+            chunks = document_chunker.chunk_blocks(blocks)
+            if not chunks:
+                raise DocumentProcessingError("No extractable chunks found in document during re-indexing")
+
+            # 3. Generate embeddings with active provider
+            embedder = get_embedding_provider()
+            chunk_texts = [c.content for c in chunks]
+            embeddings = embedder.embed_batch(chunk_texts)
+
+            # 4. Remove previous chunks
+            db.query(Chunk).filter(Chunk.document_id == doc.id).delete()
+
+            # 5. Insert new chunks
+            for p_chunk, emb in zip(chunks, embeddings):
+                db_chunk = Chunk(
+                    document_id=doc.id,
+                    workspace_id=doc.workspace_id,
+                    chunk_index=p_chunk.chunk_index,
+                    content=p_chunk.content,
+                    chunk_metadata=p_chunk.metadata,
+                    embedding=emb,
+                )
+                db.add(db_chunk)
+
+            doc.status = "completed"
+            doc.chunk_count = len(chunks)
+            doc.doc_metadata = {
+                "blocks_parsed": len(blocks),
+                "total_chunks": len(chunks),
+                "embedding_model": getattr(embedder, "model", "text-embedding-3-small"),
+            }
+            db.commit()
+            db.refresh(doc)
+            logger.info(f"Successfully re-indexed document {doc.id} ({doc.filename}) with {len(chunks)} chunks.")
+            return doc
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Failed to re-index document {doc.id}: {str(e)}")
+            raise DocumentProcessingError(f"Failed to re-index document '{doc.filename}': {str(e)}")
+
 
 document_service = DocumentService()
 
