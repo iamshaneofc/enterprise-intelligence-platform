@@ -28,6 +28,15 @@ def test_fake_embedding_batch():
     assert len(vectors[0]) == 1536
 
 
+def test_embedding_batch_chunking_large_list():
+    """Verify that batches larger than batch_size are handled properly."""
+    provider = FakeEmbeddingProvider(dimension=1536)
+    texts = [f"Text item #{i}" for i in range(600)]
+    vectors = provider.embed_batch(texts, batch_size=256)
+    assert len(vectors) == 600
+    assert all(len(v) == 1536 for v in vectors)
+
+
 def test_cosine_similarity_calculation():
     vec_a = [1.0, 0.0, 0.0]
     vec_b = [1.0, 0.0, 0.0]

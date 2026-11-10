@@ -70,7 +70,7 @@ class BaseEmbeddingProvider(ABC):
         pass
 
     @abstractmethod
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: List[str], batch_size: int = 256) -> List[List[float]]:
         """Generate embedding vectors for a batch of strings."""
         pass
     
@@ -117,7 +117,7 @@ class FakeEmbeddingProvider(BaseEmbeddingProvider):
     def embed_text(self, text: str) -> List[float]:
         return self._validate_and_return(self._generate_vector(text))
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: List[str], batch_size: int = 256) -> List[List[float]]:
         return self._validate_and_return_batch([self._generate_vector(t) for t in texts])
 
 
@@ -130,20 +130,48 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
         self.model = model
 
     def embed_text(self, text: str) -> List[float]:
+        clean_text = text.strip() or " "
         response = self.client.embeddings.create(
-            input=[text],
+            input=[clean_text],
             model=self.model,
         )
         return self._validate_and_return(response.data[0].embedding)
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: List[str], batch_size: int = 256) -> List[List[float]]:
+        """Generate embedding vectors for a batch of strings, chunked to stay within API limits."""
         if not texts:
             return []
-        response = self.client.embeddings.create(
-            input=texts,
-            model=self.model,
-        )
-        return self._validate_and_return_batch([item.embedding for item in response.data])
+
+        all_embeddings: List[List[float]] = []
+        for i in range(0, len(texts), batch_size):
+            chunk_slice = texts[i : i + batch_size]
+            clean_slice = [t.strip() or " " for t in chunk_slice]
+
+            max_retries = 3
+            last_err = None
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.embeddings.create(
+                        input=clean_slice,
+                        model=self.model,
+                    )
+                    sorted_items = sorted(response.data, key=lambda x: x.index)
+                    all_embeddings.extend([item.embedding for item in sorted_items])
+                    break
+                except Exception as e:
+                    last_err = e
+                    logger.warning(
+                        f"Embedding batch [{i}:{i + len(clean_slice)}] attempt {attempt + 1} failed: {e}"
+                    )
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(1.0 * (attempt + 1))
+            else:
+                raise DocumentProcessingError(
+                    f"Failed to generate embeddings after {max_retries} attempts: {last_err}"
+                )
+
+        return self._validate_and_return_batch(all_embeddings)
 
 
 def get_embedding_provider() -> BaseEmbeddingProvider:

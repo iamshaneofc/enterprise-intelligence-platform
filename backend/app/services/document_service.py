@@ -36,6 +36,17 @@ class DocumentService:
             logger.info(f"Duplicate document detected (hash={file_hash[:8]}). Returning existing document {existing.id}.")
             return existing
 
+        # Clean up any previous failed attempts for this file hash in this workspace
+        failed_records = db.query(Document).filter(
+            Document.workspace_id == workspace_id,
+            Document.file_hash == file_hash,
+            Document.status == "failed",
+        ).all()
+        for f_doc in failed_records:
+            logger.info(f"Cleaning up previous failed document attempt {f_doc.id}")
+            db.delete(f_doc)
+        db.flush()
+
         # Persist file
         file_path, computed_hash, file_size = storage_manager.save_document(
             workspace_id=workspace_id,
